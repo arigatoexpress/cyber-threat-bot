@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cyber-threat-bot"
+version = "0.2.0"
+description = "Threat-led cyber research bot with analyst briefs and revenue-ready operator outputs"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "beautifulsoup4>=4.12.0",
+  "requests>=2.31.0",
+]
+
+[project.scripts]
+threat-bot = "cyber_threat_bot.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

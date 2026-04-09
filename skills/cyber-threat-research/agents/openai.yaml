@@ -1,0 +1,5 @@
+interface:
+  display_name: "Cyber Threat Research"
+  short_description: "Current-source cyber threat intel with deep explainers"
+  default_prompt: "Use $cyber-threat-research to gather current cyber threat signals, verify them against primary sources, and produce a precise technical brief with visuals and safe byte-level teaching examples."
+

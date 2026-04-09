@@ -1,0 +1,18 @@
+{
+  "name": "AI SaaS Security Desk",
+  "description": "Prioritize threats that create urgent buyer pain for AI startups and B2B SaaS operators.",
+  "industries": ["AI", "SaaS", "developer tools"],
+  "owned_technologies": ["GitHub", "Cloudflare", "Kubernetes", "Okta", "OpenAI"],
+  "priority_tags": ["ai", "auth", "rce", "supply-chain", "kev"],
+  "priority_keywords": ["agent", "tenant", "oauth", "tool routing", "prompt injection", "plugin"],
+  "excluded_keywords": ["ics", "ot", "medical device"],
+  "buyers": ["CTO", "CISO", "VP Engineering"],
+  "service_strengths": [
+    "Agent and automation security reviews",
+    "Threat-led patch validation",
+    "Executive incident briefs"
+  ],
+  "package_sizes": [3000, 12000, 25000],
+  "currency": "USD",
+  "lead_goal": "Win urgent AI-security sprints and convert them into advisory retainers."
+}
