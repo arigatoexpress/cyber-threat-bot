@@ -1,0 +1,31 @@
+{
+  "name": "Kadima Digital Strategies",
+  "description": "Autonomous AI operations, trading systems, and client technology — prioritize threats affecting our infrastructure stack and client deployments.",
+  "industries": ["fintech", "AI", "real estate tech", "trading", "cybersecurity"],
+  "owned_technologies": [
+    "Google Cloud Run", "Firestore", "GCS", "Tailscale",
+    "FastAPI", "React", "Redis", "Ollama", "TradingView",
+    "Telegram", "GitHub", "Docker", "Cloudflare",
+    "NVIDIA", "Sui", "Avalanche", "Ethereum"
+  ],
+  "priority_tags": ["rce", "auth", "kev", "supply-chain", "ai", "cloud", "container"],
+  "priority_keywords": [
+    "cloud run", "firestore", "gcs", "tailscale", "fastapi",
+    "ollama", "docker escape", "container breakout", "redis",
+    "webhook", "api gateway", "jwt", "session", "token",
+    "tradingview", "pine script", "defi", "smart contract",
+    "prompt injection", "agent", "llm", "model poisoning"
+  ],
+  "excluded_keywords": ["medical device", "ics", "scada", "plc"],
+  "buyers": ["Internal Security", "Client Advisory", "Architecture Review"],
+  "service_strengths": [
+    "Infrastructure hardening for Cloud Run + Firestore deployments",
+    "Trading pipeline security (webhook chain, signal integrity)",
+    "AI agent runtime security (claw-code plugin sandboxing)",
+    "Client system audits (THO, Regional Intel)",
+    "DeFi smart contract exposure analysis"
+  ],
+  "package_sizes": [5000, 15000, 35000],
+  "currency": "USD",
+  "lead_goal": "Protect our own infrastructure first, then package security expertise as advisory for clients and partners."
+}
