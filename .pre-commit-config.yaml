@@ -1,0 +1,16 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: ruff check src tests
+        language: system
+        pass_filenames: false
+        files: ^(src|tests)/.*\.py$
+
+      - id: pytest
+        name: pytest
+        entry: python3 -m pytest tests -q
+        language: system
+        pass_filenames: false
+        files: ^(src|tests)/.*\.py$
