@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
@@ -12,8 +13,15 @@ from xml.etree import ElementTree as ET
 
 try:
     import requests
+    from requests.adapters import HTTPAdapter
 except ImportError:  # pragma: no cover - exercised through stdlib fallback
     requests = None
+    HTTPAdapter = None  # type: ignore[assignment]
+
+try:
+    from urllib3.util.retry import Retry
+except ImportError:  # pragma: no cover - urllib3 ships with requests
+    Retry = None  # type: ignore[assignment]
 
 try:
     from bs4 import BeautifulSoup
@@ -29,6 +37,23 @@ CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_v
 DARK_READING_RSS_URL = "https://www.darkreading.com/rss.xml"
 ATTACK_TECHNIQUE_URL = "https://attack.mitre.org/techniques/{technique_id}/"
 
+DEFAULT_TIMEOUT_SECONDS = 30.0
+MAX_RETRIES = 3
+RETRY_BACKOFF_FACTOR = 0.5  # exponential: 0.5s, 1s, 2s between retries
+RETRY_STATUS_FORCELIST = (500, 502, 503, 504)
+
+
+def _request_timeout() -> float:
+    """Resolve per-request timeout, allowing override via CYBER_THREAT_BOT_TIMEOUT."""
+    raw = os.environ.get("CYBER_THREAT_BOT_TIMEOUT")
+    if not raw:
+        return DEFAULT_TIMEOUT_SECONDS
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_TIMEOUT_SECONDS
+    return value if value > 0 else DEFAULT_TIMEOUT_SECONDS
+
 
 def _headers() -> dict[str, str]:
     return {
@@ -41,6 +66,24 @@ def _session() -> Any:
         return None
     session = requests.Session()
     session.headers.update(_headers())
+    if HTTPAdapter is not None and Retry is not None:
+        # Retry budget: up to MAX_RETRIES on connection errors, read errors,
+        # and 5xx responses. 4xx responses are NOT retried (status_forcelist
+        # only contains 5xx). Only safe / idempotent methods are retried.
+        retry = Retry(
+            total=MAX_RETRIES,
+            connect=MAX_RETRIES,
+            read=MAX_RETRIES,
+            status=MAX_RETRIES,
+            backoff_factor=RETRY_BACKOFF_FACTOR,
+            status_forcelist=RETRY_STATUS_FORCELIST,
+            allowed_methods=frozenset({"GET", "HEAD", "OPTIONS"}),
+            raise_on_status=False,
+            respect_retry_after_header=True,
+        )
+        adapter = HTTPAdapter(max_retries=retry)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
     return session
 
 
@@ -71,24 +114,26 @@ def parse_rfc822_datetime(value: str | None) -> datetime | None:
 
 
 def _request_json(url: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    timeout = _request_timeout()
     if SESSION is not None:
-        response = SESSION.get(url, params=params, timeout=30)
+        response = SESSION.get(url, params=params, timeout=timeout)
         response.raise_for_status()
         return response.json()
     query = urlencode(params or {})
     request_url = f"{url}?{query}" if query else url
     request = Request(request_url, headers=_headers())
-    with urlopen(request, timeout=30) as response:
+    with urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
 def _request_text(url: str) -> str:
+    timeout = _request_timeout()
     if SESSION is not None:
-        response = SESSION.get(url, timeout=30)
+        response = SESSION.get(url, timeout=timeout)
         response.raise_for_status()
         return response.text
     request = Request(url, headers=_headers())
-    with urlopen(request, timeout=30) as response:
+    with urlopen(request, timeout=timeout) as response:
         return response.read().decode("utf-8")
 
 
