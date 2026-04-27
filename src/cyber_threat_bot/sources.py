@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from datetime import datetime, timedelta, timezone
@@ -31,8 +32,11 @@ except ImportError:  # pragma: no cover - exercised through stdlib fallback
 from .models import Evidence, ThreatRecord
 from .scoring import record_priority
 
+log = logging.getLogger(__name__)
+
 USER_AGENT = "cyber-threat-bot/0.2 (+https://example.invalid/cyber-threat-bot)"
 NVD_CVE_API = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+_CVE_ID_RE = re.compile(r"^CVE-\d{4}-\d{4,}$")
 CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 DARK_READING_RSS_URL = "https://www.darkreading.com/rss.xml"
 ATTACK_TECHNIQUE_URL = "https://attack.mitre.org/techniques/{technique_id}/"
@@ -147,14 +151,24 @@ def _english_description(values: list[dict[str, Any]]) -> str:
 
 
 def _extract_cvss(metrics: dict[str, Any]) -> tuple[float | None, str | None]:
+    """Return the highest-priority CVSS score+vector, with the score coerced
+    to ``float`` (or ``None`` if uncoercible — e.g. NVD returned a malformed
+    string).
+    """
     for key in ("cvssMetricV40", "cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
         candidates = metrics.get(key) or []
         if not candidates:
             continue
         data = candidates[0].get("cvssData", {})
-        score = data.get("baseScore")
+        raw_score = data.get("baseScore")
         vector = data.get("vectorString")
-        return score, vector
+        if raw_score is None:
+            return None, vector
+        try:
+            return float(raw_score), vector
+        except (TypeError, ValueError):
+            log.warning("_extract_cvss: dropping non-numeric baseScore %r", raw_score)
+            return None, vector
     return None, None
 
 
@@ -318,7 +332,11 @@ def parse_nvd(payload: dict[str, Any], *, limit: int = 10) -> list[ThreatRecord]
     records: list[ThreatRecord] = []
     for entry in payload.get("vulnerabilities", []):
         cve = entry.get("cve", {})
-        cve_id = clean_text(cve.get("id"))
+        cve_id_raw = clean_text(cve.get("id")).upper()
+        if not _CVE_ID_RE.match(cve_id_raw):
+            log.warning("parse_nvd: dropping malformed CVE id %r", cve.get("id"))
+            continue
+        cve_id = cve_id_raw
         published_at = parse_iso_datetime(cve.get("published"))
         summary = _english_description(cve.get("descriptions", []))
         score, vector = _extract_cvss(cve.get("metrics", {}))

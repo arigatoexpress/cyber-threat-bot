@@ -92,15 +92,25 @@ def test_extract_cvss_zero_score_is_preserved_not_treated_as_missing():
     assert score == 0.0
 
 
-def test_extract_cvss_string_score_passes_through_unchecked():
-    """The helper does not coerce types — malformed scores are returned as-is.
-
-    This is documented behavior: downstream code is responsible for type checks.
-    The test guards against accidental crashes inside the helper.
+def test_extract_cvss_coerces_numeric_string_score():
+    """A numeric string baseScore (e.g. NVD returning ``"9.8"``) is coerced
+    to ``float`` to match the function's declared return type.
     """
     metrics = {"cvssMetricV31": [{"cvssData": {"baseScore": "9.8", "vectorString": "x"}}]}
     score, vector = _extract_cvss(metrics)
-    assert score == "9.8"
+    assert score == 9.8
+    assert isinstance(score, float)
+    assert vector == "x"
+
+
+def test_extract_cvss_drops_non_numeric_string_score():
+    """A non-numeric baseScore returns ``None`` (and logs) rather than
+    silently bleeding the bad value to downstream consumers.
+    """
+    metrics = {"cvssMetricV31": [{"cvssData": {"baseScore": "garbage", "vectorString": "x"}}]}
+    score, vector = _extract_cvss(metrics)
+    assert score is None
+    # Vector is preserved so callers can still surface partial info.
     assert vector == "x"
 
 
@@ -262,10 +272,12 @@ def test_record_priority_caps_score_contribution_at_five():
     assert record_priority(record) == 5.0
 
 
-def test_record_priority_negative_score_still_contributes_negative_value():
-    """Negative scores are not clamped at 0 — documents current behavior."""
+def test_record_priority_clamps_negative_score_at_zero():
+    """A bogus negative score (e.g. from a corrupted feed) does not pull the
+    priority below zero. The score component is clamped at the [0, 10] range.
+    """
     record = _baseline_record(score=-2.0)
-    assert record_priority(record) == -1.0
+    assert record_priority(record) == 0.0
 
 
 def test_record_priority_freshness_decays_to_zero_after_nine_days():
@@ -411,21 +423,21 @@ def test_parse_nvd_respects_limit():
 
 
 @pytest.mark.parametrize(
-    "cve_id",
+    "raw_id,expected_id",
     [
-        "CVE-2026-9999",
-        "cve-2026-9999",  # lowercase preserved (no canonicalization in helper)
-        "CVE-1999-0001",  # 4-digit suffix
-        "CVE-2026-1234567",  # 7-digit suffix
+        ("CVE-2026-9999", "CVE-2026-9999"),
+        ("cve-2026-9999", "CVE-2026-9999"),  # lowercase normalized to upper
+        ("CVE-1999-0001", "CVE-1999-0001"),  # 4-digit suffix
+        ("CVE-2026-1234567", "CVE-2026-1234567"),  # 7-digit suffix accepted
     ],
 )
-def test_parse_nvd_preserves_cve_id_format_verbatim(cve_id: str):
-    """The parser does not validate CVE-ID format — it stores whatever NVD returns."""
+def test_parse_nvd_normalizes_well_formed_cve_id(raw_id: str, expected_id: str):
+    """Valid CVE IDs are uppercased and preserved; suffix length is not capped."""
     payload = {
         "vulnerabilities": [
             {
                 "cve": {
-                    "id": cve_id,
+                    "id": raw_id,
                     "published": "2026-04-08T12:00:00.000",
                     "descriptions": [{"lang": "en", "value": "x"}],
                     "metrics": {},
@@ -434,5 +446,38 @@ def test_parse_nvd_preserves_cve_id_format_verbatim(cve_id: str):
         ]
     }
     records = parse_nvd(payload)
-    assert records[0].canonical_id == cve_id
-    assert cve_id in records[0].url
+    assert records[0].canonical_id == expected_id
+    assert expected_id in records[0].url
+
+
+@pytest.mark.parametrize(
+    "bad_id",
+    [
+        "",
+        "not-a-cve",
+        "CVE-",
+        "CVE-2026",
+        "CVE-2026-",
+        "CVE-2026-XXX",
+        "CVE-2026-123",  # suffix shorter than the documented 4-digit minimum
+        "GHSA-xxxx-yyyy-zzzz",  # GitHub Security Advisory format, not CVE
+    ],
+)
+def test_parse_nvd_drops_malformed_cve_id(bad_id: str):
+    """Malformed CVE IDs are logged and dropped rather than silently
+    propagating bad identifiers to downstream consumers.
+    """
+    payload = {
+        "vulnerabilities": [
+            {
+                "cve": {
+                    "id": bad_id,
+                    "published": "2026-04-08T12:00:00.000",
+                    "descriptions": [{"lang": "en", "value": "x"}],
+                    "metrics": {},
+                }
+            }
+        ]
+    }
+    records = parse_nvd(payload)
+    assert records == []
