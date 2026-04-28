@@ -1,5 +1,9 @@
 # Cyber Threat Bot
 
+[![ci](https://github.com/arigatoexpress/cyber-threat-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/arigatoexpress/cyber-threat-bot/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)
+
 An open-source cyber research bot that does three useful jobs:
 
 - collects current threat signals from reputable live sources
@@ -10,10 +14,12 @@ This is the pragmatic wedge for a Mythos-class security agent: not just "more au
 
 ## Included sources
 
-- CISA Known Exploited Vulnerabilities catalog
-- NVD CVE API 2.0
-- MITRE ATT&CK technique pages
-- Dark Reading RSS for enrichment
+| Source | Use | Access |
+| --- | --- | --- |
+| CISA Known Exploited Vulnerabilities catalog | Exploitation-in-the-wild signal and remediation due dates | Public JSON |
+| NVD CVE API 2.0 | CVE metadata, CVSS, CWEs, and references | Public API |
+| MITRE ATT&CK technique pages | Behavior framing, mitigations, detections, and procedure examples | Public HTML |
+| Dark Reading RSS | Current reporting context for prioritization | Public RSS |
 
 Dark Reading is used for current reporting and prioritization. Primary factual claims should still come from CISA, NVD, CVE.org, MITRE, and vendor advisories.
 
@@ -28,6 +34,18 @@ threat-bot latest --days 7 --per-source 8 --format markdown
 threat-bot brief CVE-2026-1340 --format markdown
 threat-bot technique T1059 --format markdown
 threat-bot offers --profile profiles/ai-saas.json --format markdown
+```
+
+## Example output
+
+```text
+## Threat Queue
+
+| Rank | Source | Signal | Why it matters | Next defensive action |
+| --- | --- | --- | --- | --- |
+| 1 | CISA KEV | Publicly tracked exploited vulnerability | Confirm exposure and remediation owner | Patch, mitigate, or document non-exposure |
+| 2 | NVD | High-severity CVE with public references | Prioritize asset inventory review | Validate affected versions and compensating controls |
+| 3 | MITRE ATT&CK | Technique brief | Helps map detections to observed behavior | Review logging and response coverage |
 ```
 
 ## Commands
@@ -52,6 +70,7 @@ threat-bot offers --profile profiles/ai-saas.json --format markdown
 - A reusable skill at `skills/cyber-threat-research/`
 - A sample commercial profile at `profiles/ai-saas.json`
 - A sales playbook at `GO_TO_MARKET.md`
+- Community docs: `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, and GitHub issue / PR templates
 
 ## Installing the skill
 
