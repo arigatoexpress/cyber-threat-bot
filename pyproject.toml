@@ -13,6 +13,13 @@ dependencies = [
   "requests>=2.31.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+  "pre-commit>=3.7.0",
+  "pytest>=8.0.0",
+  "ruff>=0.4.0",
+]
+
 [project.scripts]
 threat-bot = "cyber_threat_bot.cli:main"
 

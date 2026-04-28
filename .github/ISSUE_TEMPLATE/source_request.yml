@@ -1,0 +1,53 @@
+name: Source request
+description: Propose a new public threat-intelligence source.
+title: "source: "
+labels: ["source", "enhancement"]
+body:
+  - type: input
+    id: source_name
+    attributes:
+      label: Source name
+      placeholder: "Example: CISA KEV"
+    validations:
+      required: true
+  - type: input
+    id: source_url
+    attributes:
+      label: Public URL or API docs
+      placeholder: "https://example.com/api-docs"
+    validations:
+      required: true
+  - type: textarea
+    id: value
+    attributes:
+      label: Why this source belongs here
+      description: Explain the defensive signal it adds and how it differs from existing feeds.
+    validations:
+      required: true
+  - type: dropdown
+    id: access
+    attributes:
+      label: Access model
+      options:
+        - Public, no authentication
+        - Public with optional free API key
+        - Public RSS or static file
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: limits
+    attributes:
+      label: Rate limits and terms
+      description: Summarize published rate limits, attribution requirements, and caching constraints.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety checks
+      options:
+        - label: This source can be used without scraping behind a login wall.
+          required: true
+        - label: This source does not require storing unpublished secrets in the repository.
+          required: true

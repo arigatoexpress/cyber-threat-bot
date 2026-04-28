@@ -1,0 +1,48 @@
+name: Feature request
+description: Suggest a defensive research, reporting, or operator-output improvement.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What defensive workflow would this improve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should change?
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - New public source
+        - Brief generation
+        - Offer generation
+        - Output format
+        - Scoring / prioritization
+        - Packaging / developer experience
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence or references
+      description: Link public source docs, examples, or standards that support the change.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety checks
+      options:
+        - label: This request is defensive and does not require exploit payloads or credential collection.
+          required: true
+        - label: Any proposed source is public, cite-able, and has clear usage terms.
+          required: true
