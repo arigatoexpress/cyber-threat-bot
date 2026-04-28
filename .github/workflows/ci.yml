@@ -5,11 +5,32 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Mirror Sapphire's no-spend posture: when this satellite repo is run on
+  # the shared self-hosted Sapphire runner, /Users/aribs is the home dir,
+  # not /Users/runner. Keeping setup-python's tool cache writable avoids
+  # falling back to a paid hosted runner on cache miss.
+  AGENT_TOOLSDIRECTORY: /Users/aribs/.github-runners/toolcache
+  RUNNER_TOOL_CACHE: /Users/aribs/.github-runners/toolcache
+
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
   lint:
     name: ruff
-    runs-on: ubuntu-latest
+    # No-spend gate: skip entirely when SAPPHIRE_RUNNER is not configured
+    # so we never fall back to paid ubuntu-latest minutes. Pattern mirrors
+    # Sapphire's main CI workflow.
+    if: ${{ vars.SAPPHIRE_RUNNER != '' }}
+    runs-on: ${{ fromJSON(vars.SAPPHIRE_RUNNER || '"ubuntu-latest"') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -20,7 +41,8 @@ jobs:
 
   test:
     name: pytest
-    runs-on: ubuntu-latest
+    if: ${{ vars.SAPPHIRE_RUNNER != '' }}
+    runs-on: ${{ fromJSON(vars.SAPPHIRE_RUNNER || '"ubuntu-latest"') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
