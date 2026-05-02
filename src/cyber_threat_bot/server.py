@@ -22,6 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
+from . import epss as epss_client
 from .sources import (
     collect_latest_records,
     fetch_attack_technique,
@@ -33,7 +34,7 @@ log = logging.getLogger(__name__)
 
 VALID_SOURCES = {"kev", "nvd", "mitre", "all"}
 DEFAULT_MITRE_TECHNIQUE = "T1059"  # Command and Scripting Interpreter — common warm-up
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"  # bumped: records may carry epss_score/percentile in metadata
 
 
 # ---------------------------------------------------------------------------
@@ -80,6 +81,11 @@ class ThreatCache:
             for name, fn in fetchers.items():
                 try:
                     records = fn()
+                    # Best-effort EPSS enrichment — never fail refresh on it.
+                    try:
+                        epss_client.annotate_records(records)
+                    except Exception as enrich_exc:  # noqa: BLE001
+                        log.warning("EPSS annotation failed for source=%s err=%s", name, enrich_exc)
                     self._data[name] = {
                         "source": name,
                         "fetched_at": _now_iso(),
