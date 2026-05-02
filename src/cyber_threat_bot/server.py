@@ -23,6 +23,7 @@ from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
 from . import epss as epss_client
+from .correlation import annotate_confidence, correlate_records
 from .sources import (
     collect_latest_records,
     fetch_attack_technique,
@@ -34,7 +35,7 @@ log = logging.getLogger(__name__)
 
 VALID_SOURCES = {"kev", "nvd", "mitre", "all"}
 DEFAULT_MITRE_TECHNIQUE = "T1059"  # Command and Scripting Interpreter — common warm-up
-SCHEMA_VERSION = "2"  # bumped: records may carry epss_score/percentile in metadata
+SCHEMA_VERSION = "3"  # added: top-level sources[], confidence; new /threats/correlate endpoint
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +87,11 @@ class ThreatCache:
                         epss_client.annotate_records(records)
                     except Exception as enrich_exc:  # noqa: BLE001
                         log.warning("EPSS annotation failed for source=%s err=%s", name, enrich_exc)
+                    # Stamp top-level sources[] + confidence on every record.
+                    try:
+                        annotate_confidence(records)
+                    except Exception as enrich_exc:  # noqa: BLE001
+                        log.warning("confidence annotation failed for source=%s err=%s", name, enrich_exc)
                     self._data[name] = {
                         "source": name,
                         "fetched_at": _now_iso(),
@@ -163,6 +169,8 @@ class ThreatHandler(BaseHTTPRequestHandler):
             return self._healthz()
         if path == "/threats":
             return self._threats(parse_qs(url.query))
+        if path == "/threats/correlate":
+            return self._threats_correlate(parse_qs(url.query))
         return self._not_found()
 
     def do_POST(self) -> None:  # noqa: N802
@@ -198,6 +206,50 @@ class ThreatHandler(BaseHTTPRequestHandler):
             cache.refresh_all(self.fetchers)
             snapshot = cache.snapshot(source)
         self._json(200, snapshot)
+
+    def _threats_correlate(self, query: dict[str, list[str]]) -> None:
+        """Group the cached ``all`` records by shared CWE / vendor / product / tag.
+
+        Optional query params:
+          ``min_group_size``  default 2 — drop singleton clusters smaller than this
+          ``source``          default "all" — which cache snapshot to correlate
+
+        Response shape::
+
+            {
+              "fetched_at": "...",
+              "min_group_size": 2,
+              "clusters": {"cwe": {...}, "vendor": {...}, "product": {...}, "tag": {...}}
+            }
+        """
+        try:
+            min_size = int((query.get("min_group_size", ["2"])[0] or "2"))
+        except (TypeError, ValueError):
+            return self._json(400, {"error": "min_group_size must be int"})
+        if min_size < 2:
+            min_size = 2
+
+        source = (query.get("source", ["all"])[0] or "all").lower()
+        if source not in VALID_SOURCES:
+            return self._json(400, {"error": f"invalid source: {source}", "valid": sorted(VALID_SOURCES)})
+
+        cache = get_cache()
+        snapshot = cache.snapshot(source)
+        # Lazy warm-up — same semantics as /threats.
+        if snapshot.get("fetched_at") is None:
+            cache.refresh_all(self.fetchers)
+            snapshot = cache.snapshot(source)
+
+        clusters = correlate_records(snapshot.get("records", []), min_group_size=min_size)
+        self._json(
+            200,
+            {
+                "source": source,
+                "fetched_at": snapshot.get("fetched_at"),
+                "min_group_size": min_size,
+                "clusters": clusters,
+            },
+        )
 
     def _refresh(self) -> None:
         report = get_cache().refresh_all(self.fetchers)

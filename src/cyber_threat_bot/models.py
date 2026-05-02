@@ -49,6 +49,13 @@ class ThreatRecord:
     tags: list[str] = field(default_factory=list)
     evidence: list[Evidence] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Set populated by ``merge_records``; mirrors ``metadata['source_set']`` but
+    # promoted to a top-level field so consumers can dedupe / display feeds.
+    sources: list[str] = field(default_factory=list)
+    # Confidence in [0, 1]: how much the union of sources + CVSS argues this
+    # record is real and impactful. ``compute_confidence`` is the source of
+    # truth; ``merge_records`` calls it after dedup.
+    confidence: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -64,5 +71,7 @@ class ThreatRecord:
             "tags": self.tags,
             "evidence": [item.to_dict() for item in self.evidence],
             "metadata": self.metadata,
+            "sources": list(self.sources),
+            "confidence": self.confidence,
         }
 
