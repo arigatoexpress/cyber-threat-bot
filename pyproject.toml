@@ -8,9 +8,25 @@ version = "0.2.0"
 description = "Threat-led cyber research bot with analyst briefs and revenue-ready operator outputs"
 readme = "README.md"
 requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "arigatoexpress" },
+]
+keywords = ["cybersecurity", "threat-intel", "cve", "mitre-attack", "cisa-kev"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Information Technology",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Security",
+]
 dependencies = [
-  "beautifulsoup4>=4.12.0",
-  "requests>=2.31.0",
+  "beautifulsoup4>=4.12.0,<5",
+  "requests>=2.31.0,<3",
+  "pyyaml>=6.0,<7",
 ]
 
 [project.optional-dependencies]
@@ -19,12 +35,27 @@ dev = [
   "pytest>=8.0.0",
   "ruff>=0.4.0",
 ]
+http = [
+  "fastapi>=0.110.0,<1",
+  "uvicorn[standard]>=0.27.0,<1",
+  "aiohttp>=3.9.0,<4",
+]
 
 [project.scripts]
 threat-bot = "cyber_threat_bot.cli:main"
 
+[project.urls]
+Homepage = "https://github.com/arigatoexpress/cyber-threat-bot"
+Repository = "https://github.com/arigatoexpress/cyber-threat-bot"
+Issues = "https://github.com/arigatoexpress/cyber-threat-bot/issues"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-ra"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
