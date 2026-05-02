@@ -94,6 +94,47 @@ PYTHONPATH=src python3 -m cyber_threat_bot latest --days 7
 
 Copy or symlink `skills/cyber-threat-research` into your skill directory, or keep the repo checked out and reference the skill from here. The skill expects network access and local Python execution so it can call `python -m cyber_threat_bot ...`.
 
+## Operator: 4h refresh on Mac
+
+To keep a fresh threat snapshot at `~/.sapphire/cyber-threat-bot/latest.json`
+(consumable by Sapphire plugin tools without re-fetching upstream feeds),
+install the LaunchAgent:
+
+```bash
+cp infra/com.sapphire.cyber-threat-bot.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.sapphire.cyber-threat-bot.plist
+
+# Confirm it's loaded:
+launchctl list | grep cyber-threat-bot
+
+# View logs:
+tail -f /tmp/cyber-threat-bot.out.log /tmp/cyber-threat-bot.err.log
+```
+
+Refresh cadence: every 4 hours (`StartInterval = 14400`), with `RunAtLoad`
+so the first refresh happens immediately on `bootstrap`.
+
+Pause without uninstalling (matches Sapphire's routine pause pattern from
+PR #392):
+
+```bash
+mkdir -p ~/.sapphire/routine_pause
+touch ~/.sapphire/routine_pause/cyber-threat-bot   # pause
+rm ~/.sapphire/routine_pause/cyber-threat-bot      # resume
+```
+
+Uninstall:
+
+```bash
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.sapphire.cyber-threat-bot.plist
+rm ~/Library/LaunchAgents/com.sapphire.cyber-threat-bot.plist
+```
+
+The agent invokes `scripts/refresh.sh`, which prefers the editable
+install (`.venv/bin/threat-bot`) and falls back to
+`PYTHONPATH=src python3 -m cyber_threat_bot` so both supported invocation
+paths work.
+
 ## Safety posture
 
 The project is designed for learning, analysis, and defense. It avoids exploit PoCs and weaponized payload generation. Byte-level examples are sanitized teaching artifacts unless directly backed by a public specification or official vendor artifact.
