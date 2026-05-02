@@ -90,6 +90,32 @@ PYTHONPATH=src python3 -m cyber_threat_bot latest --days 7
 - A sales playbook at `GO_TO_MARKET.md`
 - Community docs: `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, and GitHub issue / PR templates
 
+## HTTP server (Cloud Run)
+
+A lightweight stdlib-only HTTP surface is available for container deployment:
+
+```bash
+python app.py                  # listens on $PORT or 8080 by default
+```
+
+Endpoints:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/healthz/` | Liveness probe; returns last refresh timestamp |
+| `GET` | `/threats?source=kev\|nvd\|mitre\|all` | Latest cached threats per source (lazy-warmed on first hit) |
+| `POST` | `/refresh` | Refetch all sources; idempotent; returns per-source counts and errors |
+
+Container build:
+
+```bash
+docker build -t cyber-threat-bot .
+docker run --rm -p 8080:8080 cyber-threat-bot
+curl http://localhost:8080/healthz/
+```
+
+Deploy to Cloud Run via `gcloud builds submit --config cloudbuild.yaml`.
+
 ## Installing the skill
 
 Copy or symlink `skills/cyber-threat-research` into your skill directory, or keep the repo checked out and reference the skill from here. The skill expects network access and local Python execution so it can call `python -m cyber_threat_bot ...`.
