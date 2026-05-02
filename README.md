@@ -25,15 +25,33 @@ Dark Reading is used for current reporting and prioritization. Primary factual c
 
 ## Quickstart
 
+The supported install path uses `scripts/install.sh`, which always installs
+into a project-local `.venv` using the venv's own `python -m pip`. This
+avoids the common gotcha where `pip` and `python3` resolve to different
+interpreters on the same machine, which silently breaks editable installs.
+
 ```bash
-python3 -m venv .venv
+./scripts/install.sh                # creates .venv and installs in editable mode
 source .venv/bin/activate
-pip install -e .
 
 threat-bot latest --days 7 --per-source 8 --format markdown
 threat-bot brief CVE-2026-1340 --format markdown
 threat-bot technique T1059 --format markdown
 threat-bot offers --profile profiles/ai-saas.json --format markdown
+```
+
+Optional extras:
+
+```bash
+./scripts/install.sh --with-dev      # pytest, ruff, pre-commit
+./scripts/install.sh --with-http     # fastapi/uvicorn for the HTTP server
+./scripts/install.sh --python 3.12   # pin a specific interpreter
+```
+
+The legacy invocation still works for anyone using the source tree directly:
+
+```bash
+PYTHONPATH=src python3 -m cyber_threat_bot latest --days 7
 ```
 
 ## Example output
