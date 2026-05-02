@@ -24,6 +24,7 @@ from urllib.parse import parse_qs, urlparse
 
 from . import epss as epss_client
 from .correlation import annotate_confidence, correlate_records
+from .severity_v2 import annotate_actionability, prioritize
 from .sources import (
     collect_latest_records,
     fetch_attack_technique,
@@ -35,7 +36,7 @@ log = logging.getLogger(__name__)
 
 VALID_SOURCES = {"kev", "nvd", "mitre", "all"}
 DEFAULT_MITRE_TECHNIQUE = "T1059"  # Command and Scripting Interpreter — common warm-up
-SCHEMA_VERSION = "3"  # added: top-level sources[], confidence; new /threats/correlate endpoint
+SCHEMA_VERSION = "4"  # added: actionability_score/tier in metadata; /threats/prioritized endpoint
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +93,11 @@ class ThreatCache:
                         annotate_confidence(records)
                     except Exception as enrich_exc:  # noqa: BLE001
                         log.warning("confidence annotation failed for source=%s err=%s", name, enrich_exc)
+                    # Stamp actionability_score / _tier (Lane 3).
+                    try:
+                        annotate_actionability(records)
+                    except Exception as enrich_exc:  # noqa: BLE001
+                        log.warning("actionability annotation failed for source=%s err=%s", name, enrich_exc)
                     self._data[name] = {
                         "source": name,
                         "fetched_at": _now_iso(),
@@ -171,6 +177,8 @@ class ThreatHandler(BaseHTTPRequestHandler):
             return self._threats(parse_qs(url.query))
         if path == "/threats/correlate":
             return self._threats_correlate(parse_qs(url.query))
+        if path == "/threats/prioritized":
+            return self._threats_prioritized(parse_qs(url.query))
         return self._not_found()
 
     def do_POST(self) -> None:  # noqa: N802
@@ -248,6 +256,44 @@ class ThreatHandler(BaseHTTPRequestHandler):
                 "fetched_at": snapshot.get("fetched_at"),
                 "min_group_size": min_size,
                 "clusters": clusters,
+            },
+        )
+
+    def _threats_prioritized(self, query: dict[str, list[str]]) -> None:
+        """Records sorted by actionability score, optionally filtered by tier.
+
+        Optional query params:
+          ``min_tier``  one of CRITICAL_NOW / HIGH / MEDIUM / WATCH (case-insensitive)
+          ``source``    default "all"
+          ``limit``     default 50, capped at 200
+        """
+        source = (query.get("source", ["all"])[0] or "all").lower()
+        if source not in VALID_SOURCES:
+            return self._json(400, {"error": f"invalid source: {source}", "valid": sorted(VALID_SOURCES)})
+
+        min_tier = (query.get("min_tier", [""])[0] or "").upper() or None
+
+        try:
+            limit = int((query.get("limit", ["50"])[0] or "50"))
+        except (TypeError, ValueError):
+            return self._json(400, {"error": "limit must be int"})
+        limit = max(1, min(limit, 200))
+
+        cache = get_cache()
+        snapshot = cache.snapshot(source)
+        if snapshot.get("fetched_at") is None:
+            cache.refresh_all(self.fetchers)
+            snapshot = cache.snapshot(source)
+
+        ranked = prioritize(list(snapshot.get("records") or []), min_tier=min_tier)
+        self._json(
+            200,
+            {
+                "source": source,
+                "fetched_at": snapshot.get("fetched_at"),
+                "min_tier": min_tier,
+                "count": len(ranked),
+                "records": ranked[:limit],
             },
         )
 

@@ -312,8 +312,96 @@ def test_threats_records_include_sources_and_confidence(running_server):
     assert rec["confidence"] is None or 0.0 <= rec["confidence"] <= 1.0
 
 
-def test_schema_version_is_3():
-    assert srv.SCHEMA_VERSION == "3"
+def test_schema_version_is_4():
+    assert srv.SCHEMA_VERSION == "4"
+
+
+# ---------------------------------------------------------------------------
+# /threats/prioritized (Lane 3)
+# ---------------------------------------------------------------------------
+
+def _priority_record(cve: str, *, score: float | None = None, exploited: bool = False) -> ThreatRecord:
+    return ThreatRecord(
+        source="nvd",
+        source_type="cve",
+        canonical_id=cve,
+        title=f"{cve}: stub",
+        url=f"https://example.invalid/{cve}",
+        published_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        summary="stub",
+        score=score,
+        exploited=exploited,
+        evidence=[Evidence(label="ref", url="https://example.invalid/ref")],
+    )
+
+
+@pytest.fixture
+def priority_fetchers():
+    return {
+        "all": lambda: [
+            _priority_record("CVE-LOW", score=2.0),
+            _priority_record("CVE-MED", score=8.0),
+            _priority_record("CVE-CRIT", score=10.0, exploited=True),
+        ],
+        "kev": lambda: [],
+        "nvd": lambda: [],
+        "mitre": lambda: [],
+    }
+
+
+@pytest.fixture
+def priority_server(priority_fetchers):
+    srv.set_cache(srv.ThreatCache())
+
+    class _Handler(srv.ThreatHandler):
+        fetchers = priority_fetchers
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield port
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_prioritized_returns_records_sorted(priority_server):
+    _post(priority_server, "/refresh")
+    status, _, body = _get(priority_server, "/threats/prioritized")
+    assert status == 200
+    ids = [r["canonical_id"] for r in body["records"]]
+    assert ids[0] == "CVE-CRIT"
+    # All records have actionability stamped.
+    assert all("actionability_score" in r["metadata"] for r in body["records"])
+    assert all("actionability_tier" in r["metadata"] for r in body["records"])
+
+
+def test_prioritized_filters_by_min_tier(priority_server):
+    _post(priority_server, "/refresh")
+    status, _, body = _get(priority_server, "/threats/prioritized?min_tier=HIGH")
+    assert status == 200
+    ids = [r["canonical_id"] for r in body["records"]]
+    assert "CVE-CRIT" in ids
+    assert "CVE-LOW" not in ids
+
+
+def test_prioritized_invalid_source(priority_server):
+    status, _, _ = _get(priority_server, "/threats/prioritized?source=bogus")
+    assert status == 400
+
+
+def test_prioritized_invalid_limit(priority_server):
+    status, _, _ = _get(priority_server, "/threats/prioritized?limit=abc")
+    assert status == 400
+
+
+def test_prioritized_lazy_warmup(priority_server):
+    status, _, body = _get(priority_server, "/threats/prioritized")
+    assert status == 200
+    assert body["fetched_at"] is not None
 
 
 # ---------------------------------------------------------------------------
