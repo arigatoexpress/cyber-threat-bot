@@ -1,0 +1,47 @@
+{
+  "title": "CISA Catalog of Known Exploited Vulnerabilities",
+  "catalogVersion": "2026.05.01",
+  "dateReleased": "2026-05-01T12:00:00.000Z",
+  "count": 3,
+  "vulnerabilities": [
+    {
+      "cveID": "CVE-2026-12345",
+      "vendorProject": "Acme",
+      "product": "Edge Gateway",
+      "vulnerabilityName": "Acme Edge Gateway Authentication Bypass Vulnerability",
+      "dateAdded": "2026-04-25",
+      "shortDescription": "Acme Edge Gateway contains an authentication bypass that allows an unauthenticated attacker to gain administrative access via a crafted HTTP request.",
+      "requiredAction": "Apply mitigations per vendor instructions or discontinue use of the product if mitigations are unavailable.",
+      "dueDate": "2026-05-16",
+      "knownRansomwareCampaignUse": "Known",
+      "notes": "https://acme.example/security/advisory/2026-001",
+      "cwes": ["CWE-287"]
+    },
+    {
+      "cveID": "CVE-2026-22222",
+      "vendorProject": "Globex",
+      "product": "WebPortal",
+      "vulnerabilityName": "Globex WebPortal SQL Injection Vulnerability",
+      "dateAdded": "2026-04-29",
+      "shortDescription": "Globex WebPortal contains a SQL injection vulnerability that could allow remote attackers to execute arbitrary SQL commands via the search parameter.",
+      "requiredAction": "Apply mitigations per vendor instructions.",
+      "dueDate": "2026-05-20",
+      "knownRansomwareCampaignUse": "Unknown",
+      "notes": "",
+      "cwes": ["CWE-89"]
+    },
+    {
+      "cveID": "CVE-2025-99999",
+      "vendorProject": "Initech",
+      "product": "PrintServer",
+      "vulnerabilityName": "Initech PrintServer Stack-Based Buffer Overflow",
+      "dateAdded": "2025-12-01",
+      "shortDescription": "Older entry retained to verify the lookback window filters it out when days=30.",
+      "requiredAction": "Patch.",
+      "dueDate": "2025-12-22",
+      "knownRansomwareCampaignUse": "Unknown",
+      "notes": "",
+      "cwes": ["CWE-121"]
+    }
+  ]
+}

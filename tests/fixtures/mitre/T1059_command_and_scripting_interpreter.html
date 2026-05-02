@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Command and Scripting Interpreter, Technique T1059 - Enterprise | MITRE ATT&CK®</title>
+  <meta name="description" content="Adversaries may abuse command and script interpreters to execute commands, scripts, or binaries.">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Command and Scripting Interpreter</h1>
+      <div class="card-data">
+        <span class="h5 card-title">ID:</span> T1059
+      </div>
+    </header>
+
+    <div class="description-body">
+      Adversaries may abuse command and script interpreters to execute commands, scripts, or binaries. These interfaces and languages provide ways of interacting with computer systems and are a common feature across many different platforms.
+    </div>
+
+    <h2>Procedure Examples</h2>
+    <table class="table-techniques">
+      <thead><tr><th>ID</th><th>Name</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>G0007</td>
+          <td>APT28</td>
+          <td>APT28 has used a variety of public exploits combined with shell command execution to achieve persistence.</td>
+        </tr>
+        <tr>
+          <td>G0016</td>
+          <td>APT29</td>
+          <td>APT29 has used PowerShell to execute commands and scripts.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Mitigations</h2>
+    <table class="table-mitigations">
+      <thead><tr><th>ID</th><th>Mitigation</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>M1038</td>
+          <td>Execution Prevention</td>
+          <td>Use application control where appropriate.</td>
+        </tr>
+        <tr>
+          <td>M1042</td>
+          <td>Disable or Remove Feature or Program</td>
+          <td>Disable or remove any unnecessary or unused shells or interpreters.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Detection Strategy</h2>
+    <p>Monitor command-line arguments for suspicious activity. Look for processes whose execution may be related to malicious activity, such as <code>cmd.exe</code> or <code>powershell.exe</code> with anomalous parent processes.</p>
+
+    <h2>Detection</h2>
+    <table class="table-detection">
+      <thead><tr><th>ID</th><th>Data Source</th><th>Component</th></tr></thead>
+      <tbody>
+        <tr><td>DS0017</td><td>Command</td><td>Command Execution</td></tr>
+        <tr><td>DS0009</td><td>Process</td><td>Process Creation</td></tr>
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>
