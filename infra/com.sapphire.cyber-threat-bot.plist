@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  cyber-threat-bot LaunchAgent
+  ============================
+  Refreshes CISA KEV / NVD / MITRE feeds every 4 hours.
+  Output lives at ~/.sapphire/cyber-threat-bot/latest.json so Sapphire's
+  plugin tools can read a fresh snapshot without round-tripping the
+  upstream APIs themselves.
+
+  Install:
+    cp infra/com.sapphire.cyber-threat-bot.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.sapphire.cyber-threat-bot.plist
+
+  Uninstall:
+    launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.sapphire.cyber-threat-bot.plist
+    rm ~/Library/LaunchAgents/com.sapphire.cyber-threat-bot.plist
+
+  Pause without uninstalling:
+    touch ~/.sapphire/routine_pause/cyber-threat-bot
+    (refresh.sh checks for this flag and exits 0 if present, matching the
+     Sapphire routine pause convention from PR #392.)
+
+  Adjust the BIN_DIR and REPO_DIR paths below if your checkout lives
+  elsewhere; the defaults assume ~/Code/cyber-threat-bot with .venv/.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.sapphire.cyber-threat-bot</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>exec "$HOME/Code/cyber-threat-bot/scripts/refresh.sh"</string>
+  </array>
+
+  <key>StartInterval</key>
+  <integer>14400</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/cyber-threat-bot.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/cyber-threat-bot.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>LOG_LEVEL</key>
+    <string>INFO</string>
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+</dict>
+</plist>
