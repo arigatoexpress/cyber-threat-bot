@@ -1,0 +1,18 @@
+[
+  {
+    "canonical_id": "CVE-2026-12345",
+    "exploited": true,
+    "score": null,
+    "source": "cisa-kev",
+    "source_type": "cve",
+    "weaknesses": []
+  },
+  {
+    "canonical_id": "CVE-2026-22222",
+    "exploited": true,
+    "score": null,
+    "source": "cisa-kev",
+    "source_type": "cve",
+    "weaknesses": []
+  }
+]

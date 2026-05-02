@@ -1,0 +1,22 @@
+[
+  {
+    "canonical_id": "CVE-2026-12345",
+    "exploited": false,
+    "score": 9.8,
+    "source": "nvd",
+    "source_type": "cve",
+    "weaknesses": [
+      "CWE-287"
+    ]
+  },
+  {
+    "canonical_id": "CVE-2026-67890",
+    "exploited": false,
+    "score": 9.4,
+    "source": "nvd",
+    "source_type": "cve",
+    "weaknesses": [
+      "CWE-502"
+    ]
+  }
+]

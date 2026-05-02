@@ -1,0 +1,6 @@
+{
+  "canonical_id": "T1059",
+  "detection_substring_present": true,
+  "source": "mitre-attack",
+  "source_type": "technique"
+}
