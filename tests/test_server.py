@@ -312,8 +312,17 @@ def test_threats_records_include_sources_and_confidence(running_server):
     assert rec["confidence"] is None or 0.0 <= rec["confidence"] <= 1.0
 
 
-def test_schema_version_is_4():
-    assert srv.SCHEMA_VERSION == "4"
+def test_schema_version_is_5():
+    assert srv.SCHEMA_VERSION == "5"
+
+
+def test_refresh_includes_webhook_report(running_server):
+    """/refresh now returns a 'webhook' sub-report alongside counts/errors."""
+    status, _, body = _post(running_server, "/refresh")
+    assert status == 200
+    assert "webhook" in body
+    # Without WEBHOOK_URL configured, enabled=False.
+    assert body["webhook"]["enabled"] is False
 
 
 # ---------------------------------------------------------------------------

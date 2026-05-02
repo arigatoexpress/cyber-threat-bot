@@ -23,6 +23,7 @@ from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
 from . import epss as epss_client
+from . import webhook as webhook_notifier
 from .correlation import annotate_confidence, correlate_records
 from .severity_v2 import annotate_actionability, prioritize
 from .sources import (
@@ -36,7 +37,7 @@ log = logging.getLogger(__name__)
 
 VALID_SOURCES = {"kev", "nvd", "mitre", "all"}
 DEFAULT_MITRE_TECHNIQUE = "T1059"  # Command and Scripting Interpreter — common warm-up
-SCHEMA_VERSION = "4"  # added: actionability_score/tier in metadata; /threats/prioritized endpoint
+SCHEMA_VERSION = "5"  # added: webhook notifier in /refresh post-processing
 
 
 # ---------------------------------------------------------------------------
@@ -109,10 +110,23 @@ class ThreatCache:
                     errors[name] = f"{type(exc).__name__}: {exc}"
                     results[name] = 0
             self._last_refresh = datetime.now(timezone.utc)
+            # Webhook notification for newly-actionable records. Best-effort:
+            # any failure logs but never poisons the refresh report. Uses the
+            # 'all' snapshot since that's the deduped/correlated view.
+            webhook_report: dict[str, Any] = {"enabled": False}
+            try:
+                all_snapshot = self._data.get("all", {})
+                webhook_report = webhook_notifier.notify_actionable(
+                    all_snapshot.get("records") or []
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.warning("webhook delivery encountered an error: %s", exc)
+
             return {
                 "refreshed_at": _now_iso(),
                 "counts": results,
                 "errors": errors,
+                "webhook": webhook_report,
             }
 
 
