@@ -1,212 +1,214 @@
-# AGENTS.md - Your Workspace
+# AGENTS.md — cyber-threat-bot
 
-This folder is home. Treat it that way.
+> Project-specific guidance for AI agents working on this repository.
+> This complements the human-facing `README.md` and `CONTRIBUTING.md`.
 
-## First Run
+---
 
-If `BOOTSTRAP.md` exists, that's your birth certificate. Follow it, figure out who you are, then delete it. You won't need it again.
+## Architecture
 
-## Session Startup
+### Layout
 
-Before doing anything else:
-
-1. Read `SOUL.md` — this is who you are
-2. Read `USER.md` — this is who you're helping
-3. Read `memory/YYYY-MM-DD.md` (today + yesterday) for recent context
-4. **If in MAIN SESSION** (direct chat with your human): Also read `MEMORY.md`
-
-Don't ask permission. Just do it.
-
-## Memory
-
-You wake up fresh each session. These files are your continuity:
-
-- **Daily notes:** `memory/YYYY-MM-DD.md` (create `memory/` if needed) — raw logs of what happened
-- **Long-term:** `MEMORY.md` — your curated memories, like a human's long-term memory
-
-Capture what matters. Decisions, context, things to remember. Skip the secrets unless asked to keep them.
-
-### 🧠 MEMORY.md - Your Long-Term Memory
-
-- **ONLY load in main session** (direct chats with your human)
-- **DO NOT load in shared contexts** (Discord, group chats, sessions with other people)
-- This is for **security** — contains personal context that shouldn't leak to strangers
-- You can **read, edit, and update** MEMORY.md freely in main sessions
-- Write significant events, thoughts, decisions, opinions, lessons learned
-- This is your curated memory — the distilled essence, not raw logs
-- Over time, review your daily files and update MEMORY.md with what's worth keeping
-
-### 📝 Write It Down - No "Mental Notes"!
-
-- **Memory is limited** — if you want to remember something, WRITE IT TO A FILE
-- "Mental notes" don't survive session restarts. Files do.
-- When someone says "remember this" → update `memory/YYYY-MM-DD.md` or relevant file
-- When you learn a lesson → update AGENTS.md, TOOLS.md, or the relevant skill
-- When you make a mistake → document it so future-you doesn't repeat it
-- **Text > Brain** 📝
-
-## Red Lines
-
-- Don't exfiltrate private data. Ever.
-- Don't run destructive commands without asking.
-- `trash` > `rm` (recoverable beats gone forever)
-- When in doubt, ask.
-
-## External vs Internal
-
-**Safe to do freely:**
-
-- Read files, explore, organize, learn
-- Search the web, check calendars
-- Work within this workspace
-
-**Ask first:**
-
-- Sending emails, tweets, public posts
-- Anything that leaves the machine
-- Anything you're uncertain about
-
-## Group Chats
-
-You have access to your human's stuff. That doesn't mean you _share_ their stuff. In groups, you're a participant — not their voice, not their proxy. Think before you speak.
-
-### 💬 Know When to Speak!
-
-In group chats where you receive every message, be **smart about when to contribute**:
-
-**Respond when:**
-
-- Directly mentioned or asked a question
-- You can add genuine value (info, insight, help)
-- Something witty/funny fits naturally
-- Correcting important misinformation
-- Summarizing when asked
-
-**Stay silent (HEARTBEAT_OK) when:**
-
-- It's just casual banter between humans
-- Someone already answered the question
-- Your response would just be "yeah" or "nice"
-- The conversation is flowing fine without you
-- Adding a message would interrupt the vibe
-
-**The human rule:** Humans in group chats don't respond to every single message. Neither should you. Quality > quantity. If you wouldn't send it in a real group chat with friends, don't send it.
-
-**Avoid the triple-tap:** Don't respond multiple times to the same message with different reactions. One thoughtful response beats three fragments.
-
-Participate, don't dominate.
-
-### 😊 React Like a Human!
-
-On platforms that support reactions (Discord, Slack), use emoji reactions naturally:
-
-**React when:**
-
-- You appreciate something but don't need to reply (👍, ❤️, 🙌)
-- Something made you laugh (😂, 💀)
-- You find it interesting or thought-provoking (🤔, 💡)
-- You want to acknowledge without interrupting the flow
-- It's a simple yes/no or approval situation (✅, 👀)
-
-**Why it matters:**
-Reactions are lightweight social signals. Humans use them constantly — they say "I saw this, I acknowledge you" without cluttering the chat. You should too.
-
-**Don't overdo it:** One reaction per message max. Pick the one that fits best.
-
-## Tools
-
-Skills provide your tools. When you need one, check its `SKILL.md`. Keep local notes (camera names, SSH details, voice preferences) in `TOOLS.md`.
-
-**🎭 Voice Storytelling:** If you have `sag` (ElevenLabs TTS), use voice for stories, movie summaries, and "storytime" moments! Way more engaging than walls of text. Surprise people with funny voices.
-
-**📝 Platform Formatting:**
-
-- **Discord/WhatsApp:** No markdown tables! Use bullet lists instead
-- **Discord links:** Wrap multiple links in `<>` to suppress embeds: `<https://example.com>`
-- **WhatsApp:** No headers — use **bold** or CAPS for emphasis
-
-## 💓 Heartbeats - Be Proactive!
-
-When you receive a heartbeat poll (message matches the configured heartbeat prompt), don't just reply `HEARTBEAT_OK` every time. Use heartbeats productively!
-
-Default heartbeat prompt:
-`Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.`
-
-You are free to edit `HEARTBEAT.md` with a short checklist or reminders. Keep it small to limit token burn.
-
-### Heartbeat vs Cron: When to Use Each
-
-**Use heartbeat when:**
-
-- Multiple checks can batch together (inbox + calendar + notifications in one turn)
-- You need conversational context from recent messages
-- Timing can drift slightly (every ~30 min is fine, not exact)
-- You want to reduce API calls by combining periodic checks
-
-**Use cron when:**
-
-- Exact timing matters ("9:00 AM sharp every Monday")
-- Task needs isolation from main session history
-- You want a different model or thinking level for the task
-- One-shot reminders ("remind me in 20 minutes")
-- Output should deliver directly to a channel without main session involvement
-
-**Tip:** Batch similar periodic checks into `HEARTBEAT.md` instead of creating multiple cron jobs. Use cron for precise schedules and standalone tasks.
-
-**Things to check (rotate through these, 2-4 times per day):**
-
-- **Emails** - Any urgent unread messages?
-- **Calendar** - Upcoming events in next 24-48h?
-- **Mentions** - Twitter/social notifications?
-- **Weather** - Relevant if your human might go out?
-
-**Track your checks** in `memory/heartbeat-state.json`:
-
-```json
-{
-  "lastChecks": {
-    "email": 1703275200,
-    "calendar": 1703260800,
-    "weather": null
-  }
-}
+```
+cyber-threat-bot/
+├── src/cyber_threat_bot/      # Application code
+│   ├── server.py              # stdlib http.server (ThreadingHTTPServer)
+│   ├── sources.py             # CISA KEV, NVD, MITRE fetchers
+│   ├── epss.py                # EPSS enrichment client
+│   ├── correlation.py         # Clustering by CWE/vendor/product/tag
+│   ├── severity_v2.py         # Actionability scoring & tiering
+│   ├── briefs.py              # Analyst brief generation
+│   ├── cli.py                 # CLI entrypoint
+│   └── models.py              # ThreatRecord, Evidence dataclasses
+├── tests/                     # 225+ pytest suites
+├── docs/openapi.yaml          # API surface specification
+├── cloudbuild.yaml            # GCP Cloud Build → Cloud Run
+├── Dockerfile                 # Slim Python 3.12, non-root user
+└── infra/                     # macOS LaunchAgent plist
 ```
 
-**When to reach out:**
+### Runtime Design
 
-- Important email arrived
-- Calendar event coming up (&lt;2h)
-- Something interesting you found
-- It's been >8h since you said anything
+- **No FastAPI/Flask runtime dependency** in production. The server is
+  `http.server.ThreadingHTTPServer` so the container stays small and
+  cold-start latency is minimal.
+- **In-memory cache** (`ThreatCache`) with thread-safe snapshots.
+- **Lazy warm-up**: the first `/threats` request populates the cache if it
+  has never been refreshed, so Cloud Run cold starts don't block on three
+  upstream HTTP calls.
+- **Parallel refresh**: `refresh_all()` uses `concurrent.futures.ThreadPoolExecutor`
+  to fetch CISA/NVD/MITRE concurrently, then enriches and writes under a
+  `threading.Lock`.
 
-**When to stay quiet (HEARTBEAT_OK):**
+### Data Flow
 
-- Late night (23:00-08:00) unless urgent
-- Human is clearly busy
-- Nothing new since last check
-- You just checked &lt;30 minutes ago
+```
+Upstream APIs (CISA KEV, NVD, MITRE)
+           ↓
+   ThreadPoolExecutor (parallel fetch)
+           ↓
+   EPSS enrichment → confidence annotation → actionability scoring
+           ↓
+   ThreatCache (in-memory, locked write)
+           ↓
+   /threats  /threats/correlate  /threats/prioritized
+```
 
-**Proactive work you can do without asking:**
+---
 
-- Read and organize memory files
-- Check on projects (git status, etc.)
-- Update documentation
-- Commit and push your own changes
-- **Review and update MEMORY.md** (see below)
+## Safety Boundaries
 
-### 🔄 Memory Maintenance (During Heartbeats)
+### Red Lines
 
-Periodically (every few days), use a heartbeat to:
+1. **Never commit secrets** — no API keys, service-account JSONs, or
+   `WEBHOOK_URL` tokens in code. Use environment variables or GitHub secrets.
+2. **Never run destructive commands without asking** — prefer `trash` over `rm`.
+3. **No network exfiltration** — do not send data to endpoints outside the
+   documented upstream sources (CISA, NVD, MITRE, EPSS) and configured
+   webhooks.
+4. **Do not push to `master` directly** — all changes go through PRs on
+   `feat/*` or `fix/*` branches.
+5. **Do not disable tests or lower coverage thresholds** to make CI pass.
 
-1. Read through recent `memory/YYYY-MM-DD.md` files
-2. Identify significant events, lessons, or insights worth keeping long-term
-3. Update `MEMORY.md` with distilled learnings
-4. Remove outdated info from MEMORY.md that's no longer relevant
+### Production Safety
 
-Think of it like a human reviewing their journal and updating their mental model. Daily files are raw notes; MEMORY.md is curated wisdom.
+- Cloud Run is configured `--min-instances=0`, so traffic spikes scale from
+  zero. Any change that increases cold-start time above ~5s is a regression.
+- The container runs as `UID 10001` (`ctb` user). Do not add steps to the
+  `Dockerfile` that require root at runtime.
+- `cloudbuild.yaml` deploys with `--allow-unauthenticated`. If you add
+  auth endpoints, coordinate with the Cloud Run IAM policy, not just app-level
+  checks.
 
-The goal: Be helpful without being annoying. Check in a few times a day, do useful background work, but respect quiet time.
+---
 
-## Make It Yours
+## Conventions
 
-This is a starting point. Add your own conventions, style, and rules as you figure out what works.
+### Code Style
+
+- **Ruff** for linting (`line-length = 120`, `target-version = "py311"`).
+- **Type hints** on public functions and methods.
+- **Docstrings** for modules, classes, and public APIs.
+- `from __future__ import annotations` at the top of every module.
+
+### Commits
+
+Use **Conventional Commits**:
+
+```
+feat: add parallel fetch in refresh_all
+fix: handle EPSS timeout gracefully
+docs: update openapi.yaml with /threats/prioritized
+ci: add container smoke tests to workflow
+test: cover ThreadPoolExecutor error isolation
+```
+
+Keep commits atomic. One logical change per commit.
+
+### Testing
+
+- Run the full suite before opening a PR:
+  ```bash
+  ruff check src tests
+  pytest tests/ -q --cov=src --cov-report=xml --cov-fail-under=60
+  ```
+- Server tests (`test_server.py`) must never hit real upstream APIs.
+  Stub fetchers via `ThreatHandler.fetchers` or `cache.refresh_all(fetchers=...)`.
+- Add tests for threading and parallelism behavior when modifying
+  `server.py` or `ThreatCache`.
+
+### Dependency Management
+
+- `pyproject.toml` is the source of truth.
+- Use `uv pip install -e '.[dev]'` for local development.
+- `cloudbuild.yaml` uses `pip install -e .` inside the container build;
+  keep runtime deps lightweight.
+
+---
+
+## Deployment Procedures
+
+### CI/CD Pipeline
+
+GitHub Actions (`.github/workflows/ci.yml`):
+
+1. **lint** — `ruff check src tests`
+2. **test** — `pytest` with `--cov=src --cov-fail-under=60`
+3. **smoke** — Build Docker image, start container, `curl /healthz`
+4. **deploy** — Trigger Cloud Build (only on `master` push, after test+smoke pass)
+
+All jobs respect the `SAPPHIRE_RUNNER` no-spend gate.
+
+### Deploy Job Details
+
+- Uses **Google Cloud Workload Identity Federation** (keyless auth).
+- Required GitHub repository variables:
+  - `GCP_WORKLOAD_IDENTITY_PROVIDER`
+  - `GCP_SERVICE_ACCOUNT`
+  - `GCP_PROJECT_ID`
+- The deploy job runs:
+  ```bash
+  gcloud builds submit --config cloudbuild.yaml
+  ```
+
+### Cloud Build → Cloud Run
+
+`cloudbuild.yaml` performs three steps:
+
+1. `docker build` → tags `gcr.io/$PROJECT_ID/cyber-threat-bot:$SHORT_SHA` and `:latest`
+2. `docker push --all-tags`
+3. `gcloud run deploy` in `us-central1`
+
+Runtime flags:
+- `--memory=512Mi --cpu=1`
+- `--min-instances=0 --max-instances=3`
+- `--port=8080 --allow-unauthenticated`
+
+### Rollback
+
+If a deployment is bad, roll back via Cloud Run revisions:
+
+```bash
+gcloud run revisions list --service=cyber-threat-bot --region=us-central1
+gcloud run services update-traffic cyber-threat-bot \
+  --region=us-central1 \
+  --to-revisions=REVISION_NAME=100
+```
+
+Or trigger a revert commit on `master` and let CI redeploy.
+
+---
+
+## Agent Quick Reference
+
+| Task | Command |
+|------|---------|
+| Run tests | `pytest tests/ -q` |
+| Run tests + coverage | `pytest tests/ -q --cov=src --cov-report=xml --cov-fail-under=60` |
+| Lint | `ruff check src tests` |
+| Local server | `python app.py` (listens on `PORT`, default 8080) |
+| Build container | `docker build -t cyber-threat-bot:latest .` |
+| Trigger Cloud Build | `gcloud builds submit --config cloudbuild.yaml` |
+
+### Environment Variables
+
+| Variable | Purpose |
+|----------|---------|
+| `PORT` | HTTP server port (default 8080) |
+| `HOST` | Bind address (default 0.0.0.0) |
+| `LOG_LEVEL` | Python logging level (default INFO) |
+| `WEBHOOK_URL` | Optional webhook for actionable alerts |
+| `EPSS_DISABLED` | Set to `1` to skip EPSS lookups in tests |
+| `CYBER_THREAT_BOT_TIMEOUT` | Per-request HTTP timeout override |
+
+---
+
+## Heartbeat / Maintenance Notes
+
+- This is a **satellite repo** under the Sapphire umbrella. Respect the
+  no-spend posture: never force a fallback to paid GitHub Actions runners.
+- Dependabot is configured for weekly `pip` and `github-actions` updates.
+- If you add a new upstream source, update `docs/openapi.yaml` and add a
+  stub fetcher in `test_server.py`.
+- Keep `Dockerfile` layer caching in mind: put stable steps (apt, pip install)
+  before copy-everything steps.
