@@ -529,8 +529,12 @@ def _fallback_text_after_heading(html: str, heading: str) -> str:
 def parse_attack_technique_html(html: str, technique_id: str) -> ThreatRecord:
     if BeautifulSoup is not None:
         soup = BeautifulSoup(html, "html.parser")
-        name = clean_text((soup.find("h1") or soup.title).get_text())
-        description = clean_text((soup.select_one("div.description-body") or soup.find("main")).get_text(" ", strip=True))
+        title_node = soup.find("h1") or soup.title
+        name = clean_text(title_node.get_text()) if title_node else technique_id.upper()
+        description_node = soup.select_one("div.description-body") or soup.find("main")
+        description = (
+            clean_text(description_node.get_text(" ", strip=True)) if description_node else ""
+        )
         mitigations = _table_after_heading(soup, "Mitigations")
         procedures = _table_after_heading(soup, "Procedure Examples")
         detection = _text_after_heading(soup, "Detection Strategy")
