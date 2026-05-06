@@ -1,0 +1,376 @@
+openapi: 3.0.3
+info:
+  title: cyber-threat-bot
+  description: >
+    Lightweight threat-intelligence HTTP API. Serves cached CISA KEV,
+    NVD CVE, and MITRE ATT&CK records with EPSS enrichment, correlation
+    clustering, and actionability scoring.
+  version: "0.2.0"
+  contact:
+    name: arigatoexpress
+    url: https://github.com/arigatoexpress/cyber-threat-bot/issues
+
+servers:
+  - url: /
+    description: Cloud Run / container default
+
+paths:
+  /healthz:
+    get:
+      summary: Health probe
+      description: Cloud Run liveness/readiness probe. Returns schema version and last refresh time.
+      operationId: healthz
+      responses:
+        "200":
+          description: Service is healthy.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /health:
+    get:
+      summary: Health probe alias
+      description: Alias for `/healthz`.
+      operationId: health
+      responses:
+        "200":
+          description: Service is healthy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /threats:
+    get:
+      summary: Latest cached threats
+      description: >
+        Returns the cached records for a given source. Lazily warms the
+        in-memory cache on the first request if it has never been populated.
+      operationId: getThreats
+      parameters:
+        - name: source
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [kev, nvd, mitre, all]
+            default: all
+          description: Threat source to retrieve.
+      responses:
+        "200":
+          description: Threat records retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThreatSnapshot"
+        "400":
+          description: Invalid source parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /threats/correlate:
+    get:
+      summary: Correlate threats into clusters
+      description: >
+        Groups cached records by shared CWE, vendor, product, or tag.
+        Supports lazy cache warm-up.
+      operationId: correlateThreats
+      parameters:
+        - name: source
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [kev, nvd, mitre, all]
+            default: all
+        - name: min_group_size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 2
+            default: 2
+          description: Drop clusters smaller than this size.
+      responses:
+        "200":
+          description: Correlation clusters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CorrelationResponse"
+        "400":
+          description: Invalid query parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /threats/prioritized:
+    get:
+      summary: Prioritized threat records
+      description: >
+        Returns records sorted by actionability score, optionally filtered
+        by minimum tier. Supports lazy cache warm-up.
+      operationId: prioritizedThreats
+      parameters:
+        - name: source
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [kev, nvd, mitre, all]
+            default: all
+        - name: min_tier
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [CRITICAL_NOW, HIGH, MEDIUM, WATCH]
+          description: Minimum actionability tier to include.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+          description: Maximum number of records to return.
+      responses:
+        "200":
+          description: Prioritized records.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrioritizedResponse"
+        "400":
+          description: Invalid query parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /refresh:
+    post:
+      summary: Refetch all sources
+      description: >
+        Refetches every upstream source in parallel, enriches records,
+        updates the in-memory cache, and returns a status report.
+        Idempotent.
+      operationId: refresh
+      responses:
+        "200":
+          description: Refresh completed.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefreshResponse"
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - schema_version
+      properties:
+        status:
+          type: string
+          example: ok
+        schema_version:
+          type: string
+          example: "5"
+        last_refresh:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-05-04T12:00:00Z"
+
+    ThreatSnapshot:
+      type: object
+      required:
+        - source
+        - records
+        - fetched_at
+      properties:
+        source:
+          type: string
+          example: kev
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/ThreatRecord"
+        fetched_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-05-04T12:00:00Z"
+
+    ThreatRecord:
+      type: object
+      properties:
+        source:
+          type: string
+        source_type:
+          type: string
+        canonical_id:
+          type: string
+          example: CVE-2026-0001
+        title:
+          type: string
+        url:
+          type: string
+          format: uri
+        published_at:
+          type: string
+          format: date-time
+        summary:
+          type: string
+        score:
+          type: number
+          nullable: true
+        exploited:
+          type: boolean
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        metadata:
+          type: object
+        evidence:
+          type: array
+          items:
+            type: object
+        sources:
+          type: array
+          items:
+            type: string
+        confidence:
+          type: number
+          nullable: true
+
+    CorrelationResponse:
+      type: object
+      required:
+        - source
+        - fetched_at
+        - min_group_size
+        - clusters
+      properties:
+        source:
+          type: string
+        fetched_at:
+          type: string
+          format: date-time
+          nullable: true
+        min_group_size:
+          type: integer
+          example: 2
+        clusters:
+          type: object
+          properties:
+            cwe:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+            vendor:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+            product:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+            tag:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+
+    PrioritizedResponse:
+      type: object
+      required:
+        - source
+        - fetched_at
+        - min_tier
+        - count
+        - records
+      properties:
+        source:
+          type: string
+        fetched_at:
+          type: string
+          format: date-time
+          nullable: true
+        min_tier:
+          type: string
+          nullable: true
+        count:
+          type: integer
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/ThreatRecord"
+
+    RefreshResponse:
+      type: object
+      required:
+        - refreshed_at
+        - counts
+        - errors
+        - webhook
+      properties:
+        refreshed_at:
+          type: string
+          format: date-time
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+          example:
+            kev: 20
+            nvd: 20
+            mitre: 1
+            all: 8
+        errors:
+          type: object
+          additionalProperties:
+            type: string
+        webhook:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+        valid:
+          type: array
+          items:
+            type: string

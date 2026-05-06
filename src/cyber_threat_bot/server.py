@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
@@ -70,7 +71,7 @@ class ThreatCache:
             return self._last_refresh
 
     def refresh_all(self, fetchers: dict[str, Callable[[], list[Any]]] | None = None) -> dict[str, Any]:
-        """Refetch every source. Returns a small status report.
+        """Refetch every source in parallel. Returns a small status report.
 
         ``fetchers`` is injectable for tests so the server can be exercised
         without hitting CISA / NVD / MITRE.
@@ -78,37 +79,51 @@ class ThreatCache:
         if fetchers is None:
             fetchers = _default_fetchers()
 
+        # Phase 1 — parallel fetch outside the lock so slow upstreams don't
+        # block each other.
+        fetched: dict[str, tuple[list[Any] | None, str | None]] = {}
+        max_workers = min(len(fetchers), 8)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_name = {
+                executor.submit(_safe_fetch, name, fn): name for name, fn in fetchers.items()
+            }
+            for future in as_completed(future_to_name):
+                name = future_to_name[future]
+                fetched[name] = future.result()
+
+        # Phase 2 — enrich and cache under the lock. This is fast; the heavy
+        # I/O already happened in Phase 1.
         results: dict[str, Any] = {}
         errors: dict[str, str] = {}
         with self._lock:
-            for name, fn in fetchers.items():
-                try:
-                    records = fn()
-                    # Best-effort EPSS enrichment — never fail refresh on it.
-                    try:
-                        epss_client.annotate_records(records)
-                    except Exception as enrich_exc:  # noqa: BLE001
-                        log.warning("EPSS annotation failed for source=%s err=%s", name, enrich_exc)
-                    # Stamp top-level sources[] + confidence on every record.
-                    try:
-                        annotate_confidence(records)
-                    except Exception as enrich_exc:  # noqa: BLE001
-                        log.warning("confidence annotation failed for source=%s err=%s", name, enrich_exc)
-                    # Stamp actionability_score / _tier (Lane 3).
-                    try:
-                        annotate_actionability(records)
-                    except Exception as enrich_exc:  # noqa: BLE001
-                        log.warning("actionability annotation failed for source=%s err=%s", name, enrich_exc)
-                    self._data[name] = {
-                        "source": name,
-                        "fetched_at": _now_iso(),
-                        "records": [_to_dict(rec) for rec in records],
-                    }
-                    results[name] = len(records)
-                except Exception as exc:  # noqa: BLE001 — surface upstream failure shape
-                    log.warning("refresh failed for source=%s err=%s", name, exc)
-                    errors[name] = f"{type(exc).__name__}: {exc}"
+            for name, (records, error) in fetched.items():
+                if error is not None:
+                    errors[name] = error
                     results[name] = 0
+                    continue
+
+                # Best-effort EPSS enrichment — never fail refresh on it.
+                try:
+                    epss_client.annotate_records(records)
+                except Exception as enrich_exc:  # noqa: BLE001
+                    log.warning("EPSS annotation failed for source=%s err=%s", name, enrich_exc)
+                # Stamp top-level sources[] + confidence on every record.
+                try:
+                    annotate_confidence(records)
+                except Exception as enrich_exc:  # noqa: BLE001
+                    log.warning("confidence annotation failed for source=%s err=%s", name, enrich_exc)
+                # Stamp actionability_score / _tier (Lane 3).
+                try:
+                    annotate_actionability(records)
+                except Exception as enrich_exc:  # noqa: BLE001
+                    log.warning("actionability annotation failed for source=%s err=%s", name, enrich_exc)
+                self._data[name] = {
+                    "source": name,
+                    "fetched_at": _now_iso(),
+                    "records": [_to_dict(rec) for rec in records],
+                }
+                results[name] = len(records)
+
             self._last_refresh = datetime.now(timezone.utc)
             # Webhook notification for newly-actionable records. Best-effort:
             # any failure logs but never poisons the refresh report. Uses the
@@ -137,6 +152,15 @@ def _default_fetchers() -> dict[str, Callable[[], list[Any]]]:
         "mitre": lambda: [fetch_attack_technique(DEFAULT_MITRE_TECHNIQUE)],
         "all": lambda: collect_latest_records(days=7, per_source=8),
     }
+
+
+def _safe_fetch(name: str, fn: Callable[[], list[Any]]) -> tuple[list[Any] | None, str | None]:
+    """Execute a single fetcher, returning either records or an error string."""
+    try:
+        return fn(), None
+    except Exception as exc:  # noqa: BLE001
+        log.warning("refresh failed for source=%s err=%s", name, exc)
+        return None, f"{type(exc).__name__}: {exc}"
 
 
 def _to_dict(rec: Any) -> dict[str, Any]:

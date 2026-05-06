@@ -454,3 +454,73 @@ def test_cache_concurrent_refresh_is_safe():
     assert errors == []
     snap = cache.snapshot("kev")
     assert len(snap["records"]) == 5
+
+
+# ---------------------------------------------------------------------------
+# Parallel fetch tests
+# ---------------------------------------------------------------------------
+
+def test_refresh_parallelizes_slow_fetchers():
+    """Slow fetchers must run in parallel, not sequentially."""
+    cache = srv.ThreatCache()
+    delays = {"a": 0.15, "b": 0.15, "c": 0.15}
+
+    def _make_fetcher(name: str):
+        def _fetch():
+            import time
+
+            time.sleep(delays[name])
+            return [_stub_record(name)]
+
+        return _fetch
+
+    fetchers = {name: _make_fetcher(name) for name in delays}
+
+    import time
+
+    t0 = time.monotonic()
+    report = cache.refresh_all(fetchers)
+    elapsed = time.monotonic() - t0
+
+    # Sequential would be ~0.45s; parallel should be < 0.35s even on slow CI.
+    assert elapsed < 0.35, f"expected parallel fetch < 0.35s, got {elapsed:.3f}s"
+    assert report["counts"] == {"a": 1, "b": 1, "c": 1}
+    assert report["errors"] == {}
+
+
+def test_refresh_parallel_error_isolation():
+    """A failing fetcher must not prevent successful fetchers from populating the cache."""
+    cache = srv.ThreatCache()
+    fetchers = {
+        "ok": lambda: [_stub_record("CVE-2026-OK")],
+        "fail": lambda: (_ for _ in ()).throw(ConnectionError("upstream outage")),
+    }
+    report = cache.refresh_all(fetchers)
+    assert report["counts"] == {"ok": 1, "fail": 0}
+    assert "ConnectionError: upstream outage" in report["errors"]["fail"]
+    assert cache.snapshot("ok")["records"]
+    assert cache.snapshot("fail")["records"] == []
+
+
+def test_cache_concurrent_parallel_refresh_is_safe():
+    """Concurrent refresh_all calls with ThreadPoolExecutor must not corrupt state."""
+    cache = srv.ThreatCache()
+    fetchers = {"kev": lambda: [_stub_record(f"CVE-2026-{i:04d}") for i in range(5)]}
+
+    errors = []
+
+    def worker():
+        try:
+            cache.refresh_all(fetchers)
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    snap = cache.snapshot("kev")
+    assert len(snap["records"]) == 5

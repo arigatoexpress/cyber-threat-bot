@@ -48,5 +48,69 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -e . pytest
-      - run: PYTHONPATH=src pytest tests/ -q
+      - run: pip install -e '.[dev]'
+      - run: PYTHONPATH=src pytest tests/ -q --cov=src --cov-report=xml --cov-fail-under=60
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage.xml
+          retention-days: 7
+
+  smoke:
+    name: container-smoke
+    if: ${{ vars.SAPPHIRE_RUNNER != '' }}
+    runs-on: ${{ fromJSON(vars.SAPPHIRE_RUNNER || '"ubuntu-latest"') }}
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t cyber-threat-bot:smoke .
+      - name: Start container
+        run: |
+          docker run -d --name ctb-smoke -p 18080:8080 cyber-threat-bot:smoke
+      - name: Wait for healthz
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:18080/healthz; then
+              echo "Health check passed"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Health check failed"
+          docker logs ctb-smoke
+          exit 1
+      - name: Validate JSON shape
+        run: |
+          curl -sf http://localhost:18080/healthz | python3 -m json.tool
+      - name: Cleanup
+        if: always()
+        run: docker stop ctb-smoke && docker rm ctb-smoke || true
+
+  deploy:
+    name: deploy
+    if: >-
+      ${{
+        github.ref == 'refs/heads/master' &&
+        vars.SAPPHIRE_RUNNER != '' &&
+        vars.CYBER_THREAT_BOT_DEPLOY_ENABLED == 'true'
+      }}
+    runs-on: ${{ fromJSON(vars.SAPPHIRE_RUNNER || '"ubuntu-latest"') }}
+    needs: [test, smoke]
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+      - name: Trigger Cloud Build
+        run: gcloud builds submit --config cloudbuild.yaml
