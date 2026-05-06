@@ -90,7 +90,12 @@ jobs:
 
   deploy:
     name: deploy
-    if: ${{ github.ref == 'refs/heads/master' && vars.SAPPHIRE_RUNNER != '' }}
+    if: >-
+      ${{
+        github.ref == 'refs/heads/master' &&
+        vars.SAPPHIRE_RUNNER != '' &&
+        vars.CYBER_THREAT_BOT_DEPLOY_ENABLED == 'true'
+      }}
     runs-on: ${{ fromJSON(vars.SAPPHIRE_RUNNER || '"ubuntu-latest"') }}
     needs: [test, smoke]
     permissions:

@@ -143,6 +143,7 @@ All jobs respect the `SAPPHIRE_RUNNER` no-spend gate.
 
 - Uses **Google Cloud Workload Identity Federation** (keyless auth).
 - Required GitHub repository variables:
+  - `CYBER_THREAT_BOT_DEPLOY_ENABLED=true`
   - `GCP_WORKLOAD_IDENTITY_PROVIDER`
   - `GCP_SERVICE_ACCOUNT`
   - `GCP_PROJECT_ID`
