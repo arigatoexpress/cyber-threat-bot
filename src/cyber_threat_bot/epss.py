@@ -207,6 +207,11 @@ def _http_get_json(url: str, params: dict[str, Any]) -> dict[str, Any]:
     raise RuntimeError(f"EPSS request failed after retry: {last_exc}") from last_exc
 
 
+def _disabled() -> bool:
+    """Check the kill-switch env var. Tests + ops can disable EPSS at runtime."""
+    return os.environ.get("EPSS_DISABLED", "").strip().lower() in {"1", "true", "yes"}
+
+
 def lookup(cve_id: str) -> EpssResult | None:
     """Return EPSS data for a single CVE, using the on-disk TTL cache.
 
@@ -215,7 +220,10 @@ def lookup(cve_id: str) -> EpssResult | None:
       * EPSS has no record for the CVE
       * the upstream call fails (after one retry) — we degrade gracefully
         rather than fail the whole /refresh cycle.
+      * the kill switch ``EPSS_DISABLED=1`` is set.
     """
+    if _disabled():
+        return None
     if not cve_id or not _CVE_ID_RE.match(cve_id):
         return None
     cve_id = cve_id.upper()
@@ -242,6 +250,8 @@ def lookup_many(cve_ids: Iterable[str]) -> dict[str, EpssResult]:
     or failed by the upstream are simply absent from the dict; callers
     decide whether to treat that as ``None`` or skip.
     """
+    if _disabled():
+        return {}
     ids = [c.upper() for c in cve_ids if c and _CVE_ID_RE.match(c)]
     out: dict[str, EpssResult] = {}
     misses: list[str] = []

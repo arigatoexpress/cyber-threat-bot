@@ -219,3 +219,23 @@ class TestParseAttackTechnique:
         )
         _assert_record_invariants(rec)
         assert rec.canonical_id == "T9999"
+
+    def test_handles_html_missing_description_and_main(self):
+        # Degraded shape: no description-body, no <main>. Parser must not crash;
+        # description should fall back to "" rather than raising AttributeError.
+        rec = parse_attack_technique_html(
+            "<html><body><h1>x</h1></body></html>",
+            "T9999",
+        )
+        _assert_record_invariants(rec)
+        assert rec.canonical_id == "T9999"
+        assert rec.summary == ""
+
+    def test_handles_html_missing_title_h1_and_description(self):
+        # Worst-case error page: no h1, no title, no description-body, no main.
+        # Title falls back to canonical_id, description to "".
+        rec = parse_attack_technique_html("<html><body></body></html>", "T9999")
+        _assert_record_invariants(rec)
+        assert rec.canonical_id == "T9999"
+        assert rec.summary == ""
+        assert "T9999" in rec.title

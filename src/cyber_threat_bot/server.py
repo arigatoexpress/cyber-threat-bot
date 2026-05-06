@@ -17,12 +17,16 @@ import json
 import logging
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
 from . import epss as epss_client
+from . import webhook as webhook_notifier
+from .correlation import annotate_confidence, correlate_records
+from .severity_v2 import annotate_actionability, prioritize
 from .sources import (
     collect_latest_records,
     fetch_attack_technique,
@@ -34,7 +38,7 @@ log = logging.getLogger(__name__)
 
 VALID_SOURCES = {"kev", "nvd", "mitre", "all"}
 DEFAULT_MITRE_TECHNIQUE = "T1059"  # Command and Scripting Interpreter — common warm-up
-SCHEMA_VERSION = "2"  # bumped: records may carry epss_score/percentile in metadata
+SCHEMA_VERSION = "5"  # added: webhook notifier in /refresh post-processing
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +71,7 @@ class ThreatCache:
             return self._last_refresh
 
     def refresh_all(self, fetchers: dict[str, Callable[[], list[Any]]] | None = None) -> dict[str, Any]:
-        """Refetch every source. Returns a small status report.
+        """Refetch every source in parallel. Returns a small status report.
 
         ``fetchers`` is injectable for tests so the server can be exercised
         without hitting CISA / NVD / MITRE.
@@ -75,32 +79,69 @@ class ThreatCache:
         if fetchers is None:
             fetchers = _default_fetchers()
 
+        # Phase 1 — parallel fetch outside the lock so slow upstreams don't
+        # block each other.
+        fetched: dict[str, tuple[list[Any] | None, str | None]] = {}
+        max_workers = min(len(fetchers), 8)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_name = {
+                executor.submit(_safe_fetch, name, fn): name for name, fn in fetchers.items()
+            }
+            for future in as_completed(future_to_name):
+                name = future_to_name[future]
+                fetched[name] = future.result()
+
+        # Phase 2 — enrich and cache under the lock. This is fast; the heavy
+        # I/O already happened in Phase 1.
         results: dict[str, Any] = {}
         errors: dict[str, str] = {}
         with self._lock:
-            for name, fn in fetchers.items():
-                try:
-                    records = fn()
-                    # Best-effort EPSS enrichment — never fail refresh on it.
-                    try:
-                        epss_client.annotate_records(records)
-                    except Exception as enrich_exc:  # noqa: BLE001
-                        log.warning("EPSS annotation failed for source=%s err=%s", name, enrich_exc)
-                    self._data[name] = {
-                        "source": name,
-                        "fetched_at": _now_iso(),
-                        "records": [_to_dict(rec) for rec in records],
-                    }
-                    results[name] = len(records)
-                except Exception as exc:  # noqa: BLE001 — surface upstream failure shape
-                    log.warning("refresh failed for source=%s err=%s", name, exc)
-                    errors[name] = f"{type(exc).__name__}: {exc}"
+            for name, (records, error) in fetched.items():
+                if error is not None:
+                    errors[name] = error
                     results[name] = 0
+                    continue
+
+                # Best-effort EPSS enrichment — never fail refresh on it.
+                try:
+                    epss_client.annotate_records(records)
+                except Exception as enrich_exc:  # noqa: BLE001
+                    log.warning("EPSS annotation failed for source=%s err=%s", name, enrich_exc)
+                # Stamp top-level sources[] + confidence on every record.
+                try:
+                    annotate_confidence(records)
+                except Exception as enrich_exc:  # noqa: BLE001
+                    log.warning("confidence annotation failed for source=%s err=%s", name, enrich_exc)
+                # Stamp actionability_score / _tier (Lane 3).
+                try:
+                    annotate_actionability(records)
+                except Exception as enrich_exc:  # noqa: BLE001
+                    log.warning("actionability annotation failed for source=%s err=%s", name, enrich_exc)
+                self._data[name] = {
+                    "source": name,
+                    "fetched_at": _now_iso(),
+                    "records": [_to_dict(rec) for rec in records],
+                }
+                results[name] = len(records)
+
             self._last_refresh = datetime.now(timezone.utc)
+            # Webhook notification for newly-actionable records. Best-effort:
+            # any failure logs but never poisons the refresh report. Uses the
+            # 'all' snapshot since that's the deduped/correlated view.
+            webhook_report: dict[str, Any] = {"enabled": False}
+            try:
+                all_snapshot = self._data.get("all", {})
+                webhook_report = webhook_notifier.notify_actionable(
+                    all_snapshot.get("records") or []
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.warning("webhook delivery encountered an error: %s", exc)
+
             return {
                 "refreshed_at": _now_iso(),
                 "counts": results,
                 "errors": errors,
+                "webhook": webhook_report,
             }
 
 
@@ -111,6 +152,15 @@ def _default_fetchers() -> dict[str, Callable[[], list[Any]]]:
         "mitre": lambda: [fetch_attack_technique(DEFAULT_MITRE_TECHNIQUE)],
         "all": lambda: collect_latest_records(days=7, per_source=8),
     }
+
+
+def _safe_fetch(name: str, fn: Callable[[], list[Any]]) -> tuple[list[Any] | None, str | None]:
+    """Execute a single fetcher, returning either records or an error string."""
+    try:
+        return fn(), None
+    except Exception as exc:  # noqa: BLE001
+        log.warning("refresh failed for source=%s err=%s", name, exc)
+        return None, f"{type(exc).__name__}: {exc}"
 
 
 def _to_dict(rec: Any) -> dict[str, Any]:
@@ -163,6 +213,10 @@ class ThreatHandler(BaseHTTPRequestHandler):
             return self._healthz()
         if path == "/threats":
             return self._threats(parse_qs(url.query))
+        if path == "/threats/correlate":
+            return self._threats_correlate(parse_qs(url.query))
+        if path == "/threats/prioritized":
+            return self._threats_prioritized(parse_qs(url.query))
         return self._not_found()
 
     def do_POST(self) -> None:  # noqa: N802
@@ -198,6 +252,88 @@ class ThreatHandler(BaseHTTPRequestHandler):
             cache.refresh_all(self.fetchers)
             snapshot = cache.snapshot(source)
         self._json(200, snapshot)
+
+    def _threats_correlate(self, query: dict[str, list[str]]) -> None:
+        """Group the cached ``all`` records by shared CWE / vendor / product / tag.
+
+        Optional query params:
+          ``min_group_size``  default 2 — drop singleton clusters smaller than this
+          ``source``          default "all" — which cache snapshot to correlate
+
+        Response shape::
+
+            {
+              "fetched_at": "...",
+              "min_group_size": 2,
+              "clusters": {"cwe": {...}, "vendor": {...}, "product": {...}, "tag": {...}}
+            }
+        """
+        try:
+            min_size = int((query.get("min_group_size", ["2"])[0] or "2"))
+        except (TypeError, ValueError):
+            return self._json(400, {"error": "min_group_size must be int"})
+        if min_size < 2:
+            min_size = 2
+
+        source = (query.get("source", ["all"])[0] or "all").lower()
+        if source not in VALID_SOURCES:
+            return self._json(400, {"error": f"invalid source: {source}", "valid": sorted(VALID_SOURCES)})
+
+        cache = get_cache()
+        snapshot = cache.snapshot(source)
+        # Lazy warm-up — same semantics as /threats.
+        if snapshot.get("fetched_at") is None:
+            cache.refresh_all(self.fetchers)
+            snapshot = cache.snapshot(source)
+
+        clusters = correlate_records(snapshot.get("records", []), min_group_size=min_size)
+        self._json(
+            200,
+            {
+                "source": source,
+                "fetched_at": snapshot.get("fetched_at"),
+                "min_group_size": min_size,
+                "clusters": clusters,
+            },
+        )
+
+    def _threats_prioritized(self, query: dict[str, list[str]]) -> None:
+        """Records sorted by actionability score, optionally filtered by tier.
+
+        Optional query params:
+          ``min_tier``  one of CRITICAL_NOW / HIGH / MEDIUM / WATCH (case-insensitive)
+          ``source``    default "all"
+          ``limit``     default 50, capped at 200
+        """
+        source = (query.get("source", ["all"])[0] or "all").lower()
+        if source not in VALID_SOURCES:
+            return self._json(400, {"error": f"invalid source: {source}", "valid": sorted(VALID_SOURCES)})
+
+        min_tier = (query.get("min_tier", [""])[0] or "").upper() or None
+
+        try:
+            limit = int((query.get("limit", ["50"])[0] or "50"))
+        except (TypeError, ValueError):
+            return self._json(400, {"error": "limit must be int"})
+        limit = max(1, min(limit, 200))
+
+        cache = get_cache()
+        snapshot = cache.snapshot(source)
+        if snapshot.get("fetched_at") is None:
+            cache.refresh_all(self.fetchers)
+            snapshot = cache.snapshot(source)
+
+        ranked = prioritize(list(snapshot.get("records") or []), min_tier=min_tier)
+        self._json(
+            200,
+            {
+                "source": source,
+                "fetched_at": snapshot.get("fetched_at"),
+                "min_tier": min_tier,
+                "count": len(ranked),
+                "records": ranked[:limit],
+            },
+        )
 
     def _refresh(self) -> None:
         report = get_cache().refresh_all(self.fetchers)

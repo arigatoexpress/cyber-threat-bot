@@ -33,6 +33,12 @@ def _stub_record(canonical_id: str, source: str = "stub") -> ThreatRecord:
     )
 
 
+@pytest.fixture(autouse=True)
+def disable_epss(monkeypatch):
+    """Server tests don't need real EPSS lookups; keep them off the network."""
+    monkeypatch.setenv("EPSS_DISABLED", "1")
+
+
 @pytest.fixture
 def stub_fetchers():
     return {
@@ -201,6 +207,213 @@ def test_post_to_get_route_returns_404(running_server):
 
 
 # ---------------------------------------------------------------------------
+# /threats/correlate (Lane 2)
+# ---------------------------------------------------------------------------
+
+def _correlation_record(cve: str, *, tags: list[str] | None = None, metadata: dict | None = None) -> ThreatRecord:
+    return ThreatRecord(
+        source="nvd",
+        source_type="cve",
+        canonical_id=cve,
+        title=f"{cve}: stub",
+        url=f"https://example.invalid/{cve}",
+        published_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        summary="stub",
+        tags=tags or [],
+        metadata=metadata or {},
+        evidence=[Evidence(label="ref", url="https://example.invalid/ref")],
+    )
+
+
+@pytest.fixture
+def correlation_fetchers():
+    return {
+        "all": lambda: [
+            _correlation_record("CVE-2026-A", tags=["CWE-79", "xss"]),
+            _correlation_record("CVE-2026-B", tags=["CWE-79", "xss"]),
+            _correlation_record("CVE-2026-C", metadata={"vendor_project": "Linux", "product": "Kernel"}),
+            _correlation_record("CVE-2026-D", metadata={"vendor_project": "Linux", "product": "Kernel"}),
+        ],
+        "kev": lambda: [],
+        "nvd": lambda: [],
+        "mitre": lambda: [],
+    }
+
+
+@pytest.fixture
+def correlation_server(correlation_fetchers):
+    srv.set_cache(srv.ThreatCache())
+
+    class _Handler(srv.ThreatHandler):
+        fetchers = correlation_fetchers
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield port
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_threats_correlate_returns_clusters(correlation_server):
+    _post(correlation_server, "/refresh")
+    status, _, body = _get(correlation_server, "/threats/correlate")
+    assert status == 200
+    assert body["min_group_size"] == 2
+    assert "CWE-79" in body["clusters"]["cwe"]
+    assert sorted(body["clusters"]["cwe"]["CWE-79"]) == ["CVE-2026-A", "CVE-2026-B"]
+    assert "linux" in body["clusters"]["vendor"]
+    assert "kernel" in body["clusters"]["product"]
+
+
+def test_threats_correlate_min_group_size_param(correlation_server):
+    _post(correlation_server, "/refresh")
+    status, _, body = _get(correlation_server, "/threats/correlate?min_group_size=3")
+    # No group has 3 members in this fixture.
+    assert status == 200
+    assert body["clusters"]["cwe"] == {}
+
+
+def test_threats_correlate_lazy_warmup(correlation_server):
+    # Don't /refresh first; the endpoint should warm the cache itself.
+    status, _, body = _get(correlation_server, "/threats/correlate")
+    assert status == 200
+    assert body["fetched_at"] is not None
+
+
+def test_threats_correlate_invalid_min_group_size(correlation_server):
+    status, _, body = _get(correlation_server, "/threats/correlate?min_group_size=abc")
+    assert status == 400
+
+
+def test_threats_correlate_invalid_source(correlation_server):
+    status, _, body = _get(correlation_server, "/threats/correlate?source=bogus")
+    assert status == 400
+
+
+# ---------------------------------------------------------------------------
+# Confidence + sources fields on /threats records
+# ---------------------------------------------------------------------------
+
+def test_threats_records_include_sources_and_confidence(running_server):
+    _post(running_server, "/refresh")
+    status, _, body = _get(running_server, "/threats?source=kev")
+    assert status == 200
+    rec = body["records"][0]
+    assert "sources" in rec
+    assert "confidence" in rec
+    assert isinstance(rec["sources"], list)
+    assert rec["sources"]  # non-empty
+    # confidence should be a float in [0, 1] or None.
+    assert rec["confidence"] is None or 0.0 <= rec["confidence"] <= 1.0
+
+
+def test_schema_version_is_5():
+    assert srv.SCHEMA_VERSION == "5"
+
+
+def test_refresh_includes_webhook_report(running_server):
+    """/refresh now returns a 'webhook' sub-report alongside counts/errors."""
+    status, _, body = _post(running_server, "/refresh")
+    assert status == 200
+    assert "webhook" in body
+    # Without WEBHOOK_URL configured, enabled=False.
+    assert body["webhook"]["enabled"] is False
+
+
+# ---------------------------------------------------------------------------
+# /threats/prioritized (Lane 3)
+# ---------------------------------------------------------------------------
+
+def _priority_record(cve: str, *, score: float | None = None, exploited: bool = False) -> ThreatRecord:
+    return ThreatRecord(
+        source="nvd",
+        source_type="cve",
+        canonical_id=cve,
+        title=f"{cve}: stub",
+        url=f"https://example.invalid/{cve}",
+        published_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        summary="stub",
+        score=score,
+        exploited=exploited,
+        evidence=[Evidence(label="ref", url="https://example.invalid/ref")],
+    )
+
+
+@pytest.fixture
+def priority_fetchers():
+    return {
+        "all": lambda: [
+            _priority_record("CVE-LOW", score=2.0),
+            _priority_record("CVE-MED", score=8.0),
+            _priority_record("CVE-CRIT", score=10.0, exploited=True),
+        ],
+        "kev": lambda: [],
+        "nvd": lambda: [],
+        "mitre": lambda: [],
+    }
+
+
+@pytest.fixture
+def priority_server(priority_fetchers):
+    srv.set_cache(srv.ThreatCache())
+
+    class _Handler(srv.ThreatHandler):
+        fetchers = priority_fetchers
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield port
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_prioritized_returns_records_sorted(priority_server):
+    _post(priority_server, "/refresh")
+    status, _, body = _get(priority_server, "/threats/prioritized")
+    assert status == 200
+    ids = [r["canonical_id"] for r in body["records"]]
+    assert ids[0] == "CVE-CRIT"
+    # All records have actionability stamped.
+    assert all("actionability_score" in r["metadata"] for r in body["records"])
+    assert all("actionability_tier" in r["metadata"] for r in body["records"])
+
+
+def test_prioritized_filters_by_min_tier(priority_server):
+    _post(priority_server, "/refresh")
+    status, _, body = _get(priority_server, "/threats/prioritized?min_tier=HIGH")
+    assert status == 200
+    ids = [r["canonical_id"] for r in body["records"]]
+    assert "CVE-CRIT" in ids
+    assert "CVE-LOW" not in ids
+
+
+def test_prioritized_invalid_source(priority_server):
+    status, _, _ = _get(priority_server, "/threats/prioritized?source=bogus")
+    assert status == 400
+
+
+def test_prioritized_invalid_limit(priority_server):
+    status, _, _ = _get(priority_server, "/threats/prioritized?limit=abc")
+    assert status == 400
+
+
+def test_prioritized_lazy_warmup(priority_server):
+    status, _, body = _get(priority_server, "/threats/prioritized")
+    assert status == 200
+    assert body["fetched_at"] is not None
+
+
+# ---------------------------------------------------------------------------
 # Direct cache unit tests
 # ---------------------------------------------------------------------------
 
@@ -221,6 +434,76 @@ def test_cache_snapshot_is_defensive_copy():
 
 def test_cache_concurrent_refresh_is_safe():
     """Concurrent /refresh calls must not corrupt state."""
+    cache = srv.ThreatCache()
+    fetchers = {"kev": lambda: [_stub_record(f"CVE-2026-{i:04d}") for i in range(5)]}
+
+    errors = []
+
+    def worker():
+        try:
+            cache.refresh_all(fetchers)
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    snap = cache.snapshot("kev")
+    assert len(snap["records"]) == 5
+
+
+# ---------------------------------------------------------------------------
+# Parallel fetch tests
+# ---------------------------------------------------------------------------
+
+def test_refresh_parallelizes_slow_fetchers():
+    """Slow fetchers must run in parallel, not sequentially."""
+    cache = srv.ThreatCache()
+    delays = {"a": 0.15, "b": 0.15, "c": 0.15}
+
+    def _make_fetcher(name: str):
+        def _fetch():
+            import time
+
+            time.sleep(delays[name])
+            return [_stub_record(name)]
+
+        return _fetch
+
+    fetchers = {name: _make_fetcher(name) for name in delays}
+
+    import time
+
+    t0 = time.monotonic()
+    report = cache.refresh_all(fetchers)
+    elapsed = time.monotonic() - t0
+
+    # Sequential would be ~0.45s; parallel should be < 0.35s even on slow CI.
+    assert elapsed < 0.35, f"expected parallel fetch < 0.35s, got {elapsed:.3f}s"
+    assert report["counts"] == {"a": 1, "b": 1, "c": 1}
+    assert report["errors"] == {}
+
+
+def test_refresh_parallel_error_isolation():
+    """A failing fetcher must not prevent successful fetchers from populating the cache."""
+    cache = srv.ThreatCache()
+    fetchers = {
+        "ok": lambda: [_stub_record("CVE-2026-OK")],
+        "fail": lambda: (_ for _ in ()).throw(ConnectionError("upstream outage")),
+    }
+    report = cache.refresh_all(fetchers)
+    assert report["counts"] == {"ok": 1, "fail": 0}
+    assert "ConnectionError: upstream outage" in report["errors"]["fail"]
+    assert cache.snapshot("ok")["records"]
+    assert cache.snapshot("fail")["records"] == []
+
+
+def test_cache_concurrent_parallel_refresh_is_safe():
+    """Concurrent refresh_all calls with ThreadPoolExecutor must not corrupt state."""
     cache = srv.ThreatCache()
     fetchers = {"kev": lambda: [_stub_record(f"CVE-2026-{i:04d}") for i in range(5)]}
 

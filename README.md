@@ -3,168 +3,166 @@
 [![ci](https://github.com/arigatoexpress/cyber-threat-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/arigatoexpress/cyber-threat-bot/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)
+[![Live](https://img.shields.io/badge/live-cloud--run-2ea44f)](https://cyber-threat-bot-691674245427.us-central1.run.app/healthz/)
 
-An open-source cyber research bot that does three useful jobs:
+**A primary-source threat intel bot that ranks the queue you have to clear today, not the feed you can scroll forever.**
+We aggregate CISA KEV, NVD, and MITRE ATT&CK into a deduplicated, EPSS-scored, actionability-ranked queue with a sales-ready output format.
+Recorded Future and Mandiant cost six figures and read like compliance theater. This costs nothing, runs on Cloud Run, and tells you what to patch.
 
-- collects current threat signals from reputable live sources
-- turns specific CVEs or ATT&CK techniques into structured analyst briefs
-- converts urgent threats into fixed-scope service offers you can actually sell
+---
 
-This is the pragmatic wedge for a Mythos-class security agent: not just "more autonomy," but better signal selection, better reporting, and revenue-ready outputs.
+## Live
 
-## Included sources
+| Surface | URL | Status |
+|---|---|---|
+| Health probe | <https://cyber-threat-bot-691674245427.us-central1.run.app/healthz/> | `{"status":"ok","schema_version":"3"}` |
+| Threat snapshot | `GET /threats?source=all` | lazy-warmed JSON |
+| Refresh | `POST /refresh` | idempotent re-fetch |
 
-| Source | Use | Access |
-| --- | --- | --- |
-| CISA Known Exploited Vulnerabilities catalog | Exploitation-in-the-wild signal and remediation due dates | Public JSON |
-| NVD CVE API 2.0 | CVE metadata, CVSS, CWEs, and references | Public API |
-| MITRE ATT&CK technique pages | Behavior framing, mitigations, detections, and procedure examples | Public HTML |
-| Dark Reading RSS | Current reporting context for prioritization | Public RSS |
+Refreshed every **4 hours** by Cloud Scheduler. The Mac LaunchAgent (`com.sapphire.cyber-threat-bot`) keeps a local mirror at `~/.sapphire/cyber-threat-bot/latest.json` for offline analyst work and Sapphire plugin tools.
 
-Dark Reading is used for current reporting and prioritization. Primary factual claims should still come from CISA, NVD, CVE.org, MITRE, and vendor advisories.
+## What sets this apart
 
-## Quickstart
+| | This | Recorded Future / Mandiant | Common KEV mirrors |
+|---|---|---|---|
+| **Cost** | $0 (public APIs) | six figures / yr | $0 |
+| **Sources** | CISA KEV + NVD + MITRE ATT&CK + Dark Reading RSS | proprietary scrapers | KEV only |
+| **Cross-source dedup** | yes — by CVE, then by CWE/vendor correlation | yes | no |
+| **EPSS scoring** | yes (FIRST.org EPSS API) | yes | no |
+| **Composite actionability score** | KEV + CVSS + EPSS + age, transparently weighted | opaque | no |
+| **Commercial output** | offers translated to fixed-scope service packages with price anchors | analyst hours | none |
+| **Deployable in 5 min** | yes (`gcloud builds submit`) | enterprise procurement | depends |
 
-The supported install path uses `scripts/install.sh`, which always installs
-into a project-local `.venv` using the venv's own `python -m pip`. This
-avoids the common gotcha where `pip` and `python3` resolve to different
-interpreters on the same machine, which silently breaks editable installs.
+The differentiator is **rank order**. Most feeds give you a firehose; this gives you the four CVEs you should patch before lunch and a one-page service offer to pitch a client tomorrow.
+
+## Quickstart (5 minutes)
 
 ```bash
-./scripts/install.sh                # creates .venv and installs in editable mode
+# 1. Install (creates project-local .venv, sidesteps the python3-vs-pip mismatch)
+./scripts/install.sh
 source .venv/bin/activate
 
+# 2. Pull a ranked queue
 threat-bot latest --days 7 --per-source 8 --format markdown
+
+# 3. Brief a specific CVE or technique
 threat-bot brief CVE-2026-1340 --format markdown
 threat-bot technique T1059 --format markdown
+
+# 4. Translate the queue into a sellable service offer
 threat-bot offers --profile profiles/ai-saas.json --format markdown
 ```
 
-Optional extras:
+Optional extras: `--with-dev` (pytest, ruff, pre-commit) · `--with-http` (FastAPI server) · `--python 3.12`.
 
-```bash
-./scripts/install.sh --with-dev      # pytest, ruff, pre-commit
-./scripts/install.sh --with-http     # fastapi/uvicorn for the HTTP server
-./scripts/install.sh --python 3.12   # pin a specific interpreter
-```
-
-The legacy invocation still works for anyone using the source tree directly:
-
-```bash
-PYTHONPATH=src python3 -m cyber_threat_bot latest --days 7
-```
-
-## Example output
-
-```text
-## Threat Queue
-
-| Rank | Source | Signal | Why it matters | Next defensive action |
-| --- | --- | --- | --- | --- |
-| 1 | CISA KEV | Publicly tracked exploited vulnerability | Confirm exposure and remediation owner | Patch, mitigate, or document non-exposure |
-| 2 | NVD | High-severity CVE with public references | Prioritize asset inventory review | Validate affected versions and compensating controls |
-| 3 | MITRE ATT&CK | Technique brief | Helps map detections to observed behavior | Review logging and response coverage |
-```
+The legacy invocation still works for source-tree users:
+`PYTHONPATH=src python3 -m cyber_threat_bot latest --days 7`.
 
 ## Commands
 
-- `threat-bot latest`
-  - Pulls current signals, merges overlapping evidence, and ranks the queue by urgency.
-- `threat-bot cve CVE-YYYY-NNNN`
-  - Fetches an NVD-backed CVE starter with references, weaknesses, and safe teaching angles.
-- `threat-bot technique T####`
-  - Pulls a MITRE ATT&CK technique page and extracts mitigations, detection notes, and procedure examples.
-- `threat-bot brief <CVE|T####>`
-  - Produces a structured research brief with snapshot, evidence, technical breakdown, visualization, safe byte sketch, mitigation guidance, and unknowns.
-- `threat-bot offers`
-  - Translates live threats into service offers with buyer, price anchor, delivery plan, and a path to $1M+ in annualized revenue.
+| Command | Output |
+|---|---|
+| `threat-bot latest` | Cross-source ranked queue, dedup'd, scored |
+| `threat-bot cve CVE-YYYY-NNNN` | NVD-backed CVE record + references |
+| `threat-bot technique T####` | MITRE ATT&CK technique brief |
+| `threat-bot brief <CVE\|T####>` | Full research brief: snapshot, evidence, technical breakdown, sanitized byte sketch, mitigations, unknowns |
+| `threat-bot offers` | Live threats → service offers with buyer, price anchor, delivery plan |
 
-## What you get
+## Sources
 
-- Cross-source CVE deduplication and priority scoring
-- Defensive deep-dive briefs that follow a research-friendly template
-- MITRE ATT&CK lookups for behavior framing
-- Commercial output for operators, consultants, MSSPs, or vCISO teams
-- A reusable skill at `skills/cyber-threat-research/`
-- A sample commercial profile at `profiles/ai-saas.json`
-- A sales playbook at `GO_TO_MARKET.md`
-- Community docs: `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, and GitHub issue / PR templates
+| Source | Use | Access |
+|---|---|---|
+| CISA KEV | Exploitation-in-the-wild signal + remediation due dates | Public JSON |
+| NVD CVE API 2.0 | CVE metadata, CVSS, CWEs, references | Public API |
+| MITRE ATT&CK | Behavior framing, mitigations, detections | Public HTML |
+| FIRST.org EPSS | 30-day exploitation probability per CVE | Public API |
+| Dark Reading RSS | Current reporting context | Public RSS |
+
+Primary factual claims are anchored to CISA, NVD, CVE.org, MITRE, and vendor advisories. Dark Reading is for prioritization context, not citation.
 
 ## HTTP server (Cloud Run)
 
-A lightweight stdlib-only HTTP surface is available for container deployment:
-
 ```bash
-python app.py                  # listens on $PORT or 8080 by default
-```
+# Local
+python app.py                     # listens on $PORT or 8080
 
-Endpoints:
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/healthz/` | Liveness probe; returns last refresh timestamp |
-| `GET` | `/threats?source=kev\|nvd\|mitre\|all` | Latest cached threats per source (lazy-warmed on first hit) |
-| `POST` | `/refresh` | Refetch all sources; idempotent; returns per-source counts and errors |
-
-Container build:
-
-```bash
+# Container
 docker build -t cyber-threat-bot .
 docker run --rm -p 8080:8080 cyber-threat-bot
 curl http://localhost:8080/healthz/
+
+# Deploy to Cloud Run
+gcloud builds submit --config cloudbuild.yaml
 ```
 
-Deploy to Cloud Run via `gcloud builds submit --config cloudbuild.yaml`.
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/healthz/` | Liveness; returns last refresh timestamp |
+| `GET` | `/threats?source=kev\|nvd\|mitre\|all` | Latest cached threats per source |
+| `POST` | `/refresh` | Idempotent re-fetch; returns per-source counts and errors |
 
-## Installing the skill
+## Mac operator install (4h refresh LaunchAgent)
 
-Copy or symlink `skills/cyber-threat-research` into your skill directory, or keep the repo checked out and reference the skill from here. The skill expects network access and local Python execution so it can call `python -m cyber_threat_bot ...`.
-
-## Operator: 4h refresh on Mac
-
-To keep a fresh threat snapshot at `~/.sapphire/cyber-threat-bot/latest.json`
-(consumable by Sapphire plugin tools without re-fetching upstream feeds),
-install the LaunchAgent:
+Keeps `~/.sapphire/cyber-threat-bot/latest.json` warm for Sapphire plugin tools without re-fetching upstream feeds.
 
 ```bash
 cp infra/com.sapphire.cyber-threat-bot.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.sapphire.cyber-threat-bot.plist
-
-# Confirm it's loaded:
 launchctl list | grep cyber-threat-bot
-
-# View logs:
 tail -f /tmp/cyber-threat-bot.out.log /tmp/cyber-threat-bot.err.log
 ```
 
-Refresh cadence: every 4 hours (`StartInterval = 14400`), with `RunAtLoad`
-so the first refresh happens immediately on `bootstrap`.
-
-Pause without uninstalling (matches Sapphire's routine pause pattern from
-PR #392):
-
+Pause without uninstalling (matches Sapphire's PR #392 routine-pause pattern):
 ```bash
-mkdir -p ~/.sapphire/routine_pause
-touch ~/.sapphire/routine_pause/cyber-threat-bot   # pause
-rm ~/.sapphire/routine_pause/cyber-threat-bot      # resume
+touch ~/.sapphire/routine_pause/cyber-threat-bot     # pause
+rm    ~/.sapphire/routine_pause/cyber-threat-bot     # resume
 ```
 
-Uninstall:
+## Architecture
 
-```bash
-launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.sapphire.cyber-threat-bot.plist
-rm ~/Library/LaunchAgents/com.sapphire.cyber-threat-bot.plist
+```
+sources         dedup           score              output
+-------         -----           -----              ------
+CISA KEV   ─┐                                  ┌── CLI / markdown
+NVD        ─┤── cross-source ── KEV+CVSS+      ├── /threats JSON
+MITRE      ─┤   correlation    EPSS+age        ├── service offers
+EPSS       ─┘   (CWE, vendor)  composite       └── Sapphire JSON mirror
+                               actionability
 ```
 
-The agent invokes `scripts/refresh.sh`, which prefers the editable
-install (`.venv/bin/threat-bot`) and falls back to
-`PYTHONPATH=src python3 -m cyber_threat_bot` so both supported invocation
-paths work.
+`src/cyber_threat_bot/` — collectors, dedup, scoring, formatters. Stdlib-first HTTP server. No frameworks unless you opt in to `--with-http`.
+
+## Status
+
+- **203 tests passing** (`pytest tests/ -q`); ruff-clean; CI gates merge.
+- Cross-source dedup + correlation by CWE/vendor — PR #15 (merged).
+- EPSS scoring on every CVE record — PR #14 (merged).
+- Composite actionability score (KEV + CVSS + EPSS + age) — `feat/severity-v2` (in progress).
+- Cloud Run deploy live; 4h Cloud Scheduler refresh wired.
+
+### Roadmap
+
+- Severity v2 composite score lands on `master`, gated by snapshot regression tests.
+- Vendor advisory ingestion (Microsoft, Cisco, Atlassian) for the high-value tail KEV misses.
+- One-shot Slack/Telegram digest mode for `latest` + `offers`.
+- Optional Sigma rule emit per technique brief.
+
+## Cross-link
+
+This bot is the **threat-intel silo** of Sapphire's [Brain](https://sapphirealpha.xyz/api/brain/synthesis) — Sapphire pulls our snapshot every cycle and folds it into the cross-silo health score alongside trading, regime, and infrastructure feeds. Sapphire is the orchestration layer; this satellite stands alone.
+
+- [Sapphire](https://github.com/arigatoexpress/Sapphire) — capital intelligence + content + autonomous ops monorepo
+- [regional-intel-workbench](https://github.com/arigatoexpress/regional-intel-workbench) — public-source regional analyst console
+- [wildfire-watch](https://github.com/arigatoexpress/wildfire-watch) — county-scale autonomous drone fleet for wildfire detection
 
 ## Safety posture
 
-The project is designed for learning, analysis, and defense. It avoids exploit PoCs and weaponized payload generation. Byte-level examples are sanitized teaching artifacts unless directly backed by a public specification or official vendor artifact.
+Built for learning, analysis, and defense. No exploit PoCs. No weaponized payload generation. Byte-level examples are sanitized teaching artifacts unless directly backed by a public spec or official vendor artifact.
 
-## NVD notice
+## Attribution
 
-This product uses data from the NVD API but is not endorsed or certified by the NVD.
+This product uses data from the NVD API but is not endorsed or certified by the NVD. EPSS data courtesy of FIRST.org.
+
+## License
+
+[MIT](LICENSE).
