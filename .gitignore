@@ -10,3 +10,19 @@ uv.lock
 .coverage.*
 htmlcov/
 coverage.xml
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
